@@ -1,3 +1,5 @@
+[![crates.io](https://img.shields.io/crates/v/typed-qb.svg)](https://crates.io/crates/typed-qb/) [![docs](https://img.shields.io/badge/docs-rs.svg)](https://docs.rs/typed-qb/)
+
 # `typed-qb`: a compile-time typed "query builder"
 
 `typed-qb` is a compile-time, typed, query builder. The goal of this crate is to explore the gap between compile-time verification of raw SQL queries (like `sqlx`) and runtime generation of queries via query builders (like `diesel`).
