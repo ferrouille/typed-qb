@@ -108,13 +108,6 @@ impl<V: Value> Where<V> {
     }
 }
 
-#[macro_export]
-/// A shorthand for `Where::new(expr!(...))`
-macro_rules! whe {
-    () => { $crate::qualifiers::AllRows };
-    ($($tt:tt)*) => { $crate::qualifiers::Where::new(expr!($($tt)*)) };
-}
-
 // GROUP BY
 impl<T: AnyGroupedBy> AnyHaving for T {}
 pub trait AnyGroupedBy: ModifyRows + Sized {

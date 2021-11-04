@@ -1,3 +1,22 @@
+//! `INSERT` queries
+//! 
+//! **Note:** There are currently no checks against duplicate fields or missing fields without default value.
+//! 
+//! **Note:** There are currently no checks against using a field from the table in an expression.
+//! That is, `INSERT INTO table (field) VALUES (table.field)` will not cause a compile error.
+//! 
+//! ```rust
+//! # #![feature(generic_associated_types)] 
+//! # use typed_qb::__doctest::*; 
+//! # let mut conn = FakeConn;
+//! let name = "root";
+//! let results = conn.typed_exec(Users::insert(|user| values! {
+//!     user.id => [1],
+//!     user.name => [:name],
+//! }))?;
+//! # Ok::<(), mysql::Error>(())
+//! ```
+
 use crate::expr::Value;
 use crate::typing::Ty;
 use crate::{
@@ -20,14 +39,22 @@ macro_rules! values {
             value: $value,
         }
     };
+    ($key:expr => [$($value:tt)*], $($rest:tt)+) => {
+        $crate::insert::ValueListCons {
+            head: $crate::values!($key => [$($value)*]),
+            tail: $crate::values!($($rest)+),
+        }
+    };
     ($key:expr => $value:expr, $($rest:tt)+) => {
         $crate::insert::ValueListCons {
             head: $crate::values!($key => $value),
             tail: $crate::values!($($rest)+),
         }
-    }
+    };
+    ($(,)*) => {};
 }
 
+// TODO: S cannot contain references to fields of this table.
 pub struct Insert<T: Table, S: ValueList> {
     pub(crate) values: S,
     pub(crate) _phantom: PhantomData<T>,

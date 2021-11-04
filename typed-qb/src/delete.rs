@@ -1,9 +1,18 @@
-use std::marker::PhantomData;
+//! `DELETE FROM` queries
+//! 
+//! ```rust
+//! # #![feature(generic_associated_types)] 
+//! # use typed_qb::__doctest::*; 
+//! # let mut conn = FakeConn;
+//! let results = conn.typed_exec(Users::delete(|user| expr!(user.id = 5).limit::<1>()))?;
+//! # Ok::<(), mysql::Error>(())
+//! ```
 
 use crate::qualifiers::{
     AnyHaving, AnyOrderedBy, AnyWhere, Limit, LimitValue, OrderBy, OrderBySeq,
 };
 use crate::{sql_concat, ConstSqlStr, QueryRoot, QueryTree, Table, ToSql, UpEnd};
+use std::marker::PhantomData;
 
 pub trait DeleteQualifiers {}
 

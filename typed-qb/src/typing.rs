@@ -1,6 +1,5 @@
-use std::{convert::TryInto, fmt, marker::PhantomData};
-
 use crate::QueryValue;
+use std::{convert::TryInto, fmt, marker::PhantomData};
 
 pub trait Ty {
     type Base: BaseTy;

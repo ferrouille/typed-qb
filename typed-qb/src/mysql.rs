@@ -1,11 +1,10 @@
-use std::marker::PhantomData;
-
 use crate::{
     select::{ExactlyOne, RowKind, SelectQuery, SelectedData, ZeroOrMore, ZeroOrOne},
     QueryRoot, QueryValue,
 };
 use log::{debug, trace};
 use mysql::{prelude::Queryable, Binary, QueryResult, Value};
+use std::marker::PhantomData;
 
 pub trait CollectResults<T, I: Iterator<Item = Result<T, mysql::Error>>>: RowKind {
     type Output = Self::Repr<T>;

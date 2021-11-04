@@ -1,6 +1,7 @@
 mod iflift;
 mod parsing;
 
+use crate::iflift::{ConditionTree, IfLifting};
 use parsing::codegen::ToTokenStream;
 use parsing::create::SqlStatements;
 use parsing::expr::Expr;
@@ -8,8 +9,10 @@ use proc_macro2::TokenStream;
 use quote::ToTokens;
 use syn::{parse_macro_input, Block};
 
-use crate::iflift::{ConditionTree, IfLifting};
-
+/// Parses SQL syntax into a Value.
+/// ```rust,ignore
+/// expr!(table.field = 10 AND table.id < 100)
+/// ```
 #[proc_macro]
 pub fn expr(tokens: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let decl = parse_macro_input!(tokens as Expr);
@@ -20,6 +23,7 @@ pub fn expr(tokens: proc_macro::TokenStream) -> proc_macro::TokenStream {
     ts.into()
 }
 
+/// Generate table definitions from `CREATE TABLE` statements
 #[proc_macro]
 pub fn tables(tokens: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let tables = parse_macro_input!(tokens as SqlStatements);
@@ -30,6 +34,31 @@ pub fn tables(tokens: proc_macro::TokenStream) -> proc_macro::TokenStream {
     ts.into()
 }
 
+/// Lifts the if statements to the top, duplicating code around the ifs.
+/// For example, the following code:
+/// ```rust,ignore
+/// lift_if! {
+///     let x = 10;
+///     do_things();
+///     if a == 5 {
+///         println!("5");
+///     } else {
+///         println!("Not 5");
+///     }
+/// }
+/// ```
+/// Is expanded to:
+/// ```rust,ignore
+/// if a == 5 {
+///     let x = 10;
+///     do_things();
+///     println!("5");
+/// } else {
+///     let x = 10;
+///     do_things();
+///     println!("Not 5");
+/// }
+/// ```
 #[proc_macro]
 pub fn lift_if(tokens: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let stmts = parse_macro_input!(tokens with Block::parse_within);
@@ -42,7 +71,7 @@ pub fn lift_if(tokens: proc_macro::TokenStream) -> proc_macro::TokenStream {
     parsed.extract_conditions(&mut conditions);
 
     let (num, binary_tree) = conditions.create_binary_tree(0);
-    
+
     let mut choices = vec![true; num];
     let block = binary_tree.codegen(&mut choices, &parsed, &conditions);
 

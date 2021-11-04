@@ -1,4 +1,15 @@
-use std::marker::PhantomData;
+//! `UPDATE` queries
+//! 
+//! ```rust
+//! # #![feature(generic_associated_types)] 
+//! # use typed_qb::__doctest::*; 
+//! # let mut conn = FakeConn;
+//! let name = "root";
+//! let results = conn.typed_exec(Users::update(|user| set! {
+//!     user.name => [:name],
+//! }, |user| expr!(user.id = 42).limit::<1>()))?;
+//! # Ok::<(), mysql::Error>(())
+//! ```
 
 use crate::expr::Value;
 use crate::qualifiers::{
@@ -9,6 +20,7 @@ use crate::{
     sql_concat, ConstSqlStr, Field, FieldName, QueryRoot, QueryTree, Table, TableAlias, ToSql, Up,
     UpEnd,
 };
+use std::marker::PhantomData;
 
 #[macro_export]
 macro_rules! set {

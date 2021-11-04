@@ -18,19 +18,6 @@ typed_qb::tables! {
         KEY IX_Users_AskedById (AskedById),
         CONSTRAINT FK_Questions_Users_AskedById FOREIGN KEY (AskedById) REFERENCES Users (Id) ON DELETE CASCADE
     );
-
-    CREATE TABLE Answers (
-        Id INT(11) UNSIGNED NOT NULL AUTO_INCREMENT,
-        Text TEXT NOT NULL,
-        Correct BIT(1) NOT NULL,
-        OnQuestionId INT(11) UNSIGNED NOT NULL,
-        ByUserId INT(11) UNSIGNED NOT NULL,
-        PRIMARY KEY(Id),
-        KEY IX_Answer_OnQuestionId (OnQuestionId),
-        KEY IX_Answer_ByUserId (ByUserId),
-        CONSTRAINT FK_Answer_Questions_OnQuestionId FOREIGN KEY (OnQuestionId) REFERENCES Questions (Id) ON DELETE CASCADE,
-        CONSTRAINT FK_Answer_Users_ByUserId FOREIGN KEY (ByUserId) REFERENCES Users (Id) ON DELETE CASCADE
-    );
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {

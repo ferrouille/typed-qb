@@ -13,6 +13,53 @@
     const_fn_trait_bound
 )]
 
+//! `typed-qb` is a compile-time, typed, query builder.
+//! The query is transformed into an SQL query string at compile time.
+//! If code compiles and the schema in the code matches the database, it should be (*almost*) impossible to write queries that produce errors.
+//! 
+//! Make sure to enable the `generic_associated_types` feature and include the prelude:
+//! ```rust
+//! #![feature(generic_associated_types)]
+//! use typed_qb::prelude::*;
+//! ```
+//!
+//! Use the [tables](tables) macro to generate table definitions:
+//! ```rust
+//! # #![feature(generic_associated_types)]
+//! typed_qb::tables! {
+//!     CREATE TABLE Users (
+//!         Id INT(11) UNSIGNED NOT NULL AUTO_INCREMENT,
+//!         Name VARCHAR(64) NOT NULL,
+//!         PRIMARY KEY(Id)
+//!     );
+//! }
+//! ```
+//! This will generate a table definition `Users` implementing [Table](Table).
+//! To construct queries, call the methods on this trait:
+//! ```rust
+//! # #![feature(generic_associated_types)]
+//! # use typed_qb::__doctest::*;
+//! let query = Users::query(|user| data! {
+//!     id: user.id,
+//!     name: user.name,
+//! });
+//! # ground(query);
+//! ```
+//! Pass the query to [Database::typed_query](mysql::Database::typed_query) to execute the query:
+//! ```rust,no_run
+//! # #![feature(generic_associated_types)] use typed_qb::__doctest::*;
+//! # let query = Users::query(|user| expr!(COUNT(*)));
+//! let opts = mysql::OptsBuilder::new()
+//!     .user(Some("..."))
+//!     .pass(Some("..."))
+//!     .db_name(Some("..."));
+//! let pool = mysql::Pool::new(opts)?;
+//! 
+//! let mut conn = pool.get_conn()?;
+//! let results = conn.typed_query(query)?;
+//! # Ok::<(), mysql::Error>(())
+//! ```
+
 pub mod expr;
 pub mod functions;
 pub mod mysql;
@@ -31,7 +78,7 @@ pub mod prelude {
         CreateOrderByEntry, GroupBySeq, OrderBySeq, Where,
     };
     pub use crate::select::select;
-    pub use crate::{data, expr, set, Table};
+    pub use crate::{data, expr, set, values, Table};
 }
 
 use delete::{Delete, DeleteQualifiers};
@@ -50,6 +97,7 @@ use update::{SetList, Update, UpdateQualifiers};
 
 pub use __private::ConstSqlStr;
 
+#[doc(hidden)]
 pub mod __private {
     pub use concat_idents::concat_idents;
     pub use std::marker::PhantomData;
@@ -424,6 +472,7 @@ pub trait TableAlias {
     const NAME: &'static str;
 }
 
+#[doc(hidden)]
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Alias<U: Up>(U);
 
@@ -478,22 +527,37 @@ impl<T: Ty, A: TableAlias, N: FieldName> ToSql for Field<T, A, N> {
     fn collect_parameters(&self, _params: &mut Vec<QueryValue>) {}
 }
 
-pub fn ground<T: QueryTree<UpEnd>>(t: T) -> T {
-    t
-}
-
+/// Represents a table. All fields of the table can be accessed via struct fields.
+/// You should **not** implement this trait.
+/// `TableReference`s are passed to the closures provided to the various methods on the [`Table`] trait.
 pub trait TableReference {
     type AllNullable: TableReference;
 
     fn make_nullable(self) -> Self::AllNullable;
 }
 
-pub trait Table {
+pub trait Table: Sized {
     type WithAlias<A: TableAlias>: TableReference;
 
     fn new<A: TableAlias>() -> Self::WithAlias<A>;
 
     // TODO: Can we implement some kind of trait to allow IntoPartialSelect to be passed directy into this function?
+    /// `SELECT` data from the table.
+    /// 
+    /// See also [`data`] and [`select`](select::select).
+    /// 
+    /// ```rust 
+    /// # #![feature(generic_associated_types)] 
+    /// # use typed_qb::__doctest::*; 
+    /// # let mut conn = FakeConn;
+    /// let results = conn.typed_query(Users::query(|user| {
+    ///     data! {
+    ///         id: user.id,
+    ///         username: user.name,
+    ///     }
+    /// }))?;
+    /// # Ok::<(), mysql::Error>(())
+    /// ```
     fn query<
         U: Up,
         D: SelectedData,
@@ -519,6 +583,30 @@ pub trait Table {
             .map_from(|next| BaseTable::new(table, next))
     }
 
+    /// `LEFT JOIN` the table.
+    /// 
+    /// `condition` takes a [TableReference](TableReference) to the newly joined data, and expects a boolean expression as a return value.
+    /// The condition is what you would normally write for the `ON ...` part of a `JOIN`.
+    /// Usually this is something like `expr!(foo_table.id = bar_table.foo_id)`.
+    /// 
+    /// `data` takes a [TableReference](TableReference) to the newly joined data, and expects the rest of the query as a return value.
+    /// 
+    /// ```rust
+    /// # #![feature(generic_associated_types)] 
+    /// # use typed_qb::__doctest::*; 
+    /// # let mut conn = FakeConn;
+    /// let results = conn.typed_query(Users::query(|user|
+    ///     Questions::left_join(
+    ///         |question| expr!(question.asked_by_id = user.id),
+    ///         |question| select(data! {
+    ///             id: user.id,
+    ///             username: user.name,
+    ///             num_questions: [COUNT(*)],
+    ///         }, |_| AllRows.group_by(user.id)) 
+    ///     )
+    /// ))?;
+    /// # Ok::<(), mysql::Error>(())
+    /// ```
     fn left_join<
         U: Up,
         V: Value,
@@ -548,6 +636,10 @@ pub trait Table {
             .map_from(|next| LeftJoin::new(condition(&table), table, next))
     }
 
+
+    /// `INNER JOIN` the table.
+    /// 
+    /// See [Table::left_join]
     fn inner_join<
         U: Up,
         V: Value,
@@ -577,6 +669,8 @@ pub trait Table {
             .map_from(|next| InnerJoin::new(condition(&table), table, next))
     }
 
+
+    /// `UPDATE` rows of the table.
     fn update<
         S: SetList,
         F: FnOnce(&Self::WithAlias<()>) -> S,
@@ -585,10 +679,7 @@ pub trait Table {
     >(
         list: F,
         chain: C,
-    ) -> Update<Self, S, L>
-    where
-        Self: Sized,
-    {
+    ) -> Update<Self, S, L> {
         let table = Self::new();
         Update {
             sets: list(&table),
@@ -597,10 +688,8 @@ pub trait Table {
         }
     }
 
-    fn insert<S: ValueList, F: FnOnce(&Self::WithAlias<()>) -> S>(list: F) -> Insert<Self, S>
-    where
-        Self: Sized,
-    {
+    /// `INSERT` new rows into the table.
+    fn insert<S: ValueList, F: FnOnce(&Self::WithAlias<()>) -> S>(list: F) -> Insert<Self, S> {
         let table = Self::new();
         Insert {
             values: list(&table),
@@ -608,10 +697,8 @@ pub trait Table {
         }
     }
 
-    fn delete<L: DeleteQualifiers, F: FnOnce(&Self::WithAlias<()>) -> L>(list: F) -> Delete<Self, L>
-    where
-        Self: Sized,
-    {
+    /// `DELETE FROM` the table. 
+    fn delete<L: DeleteQualifiers, F: FnOnce(&Self::WithAlias<()>) -> L>(list: F) -> Delete<Self, L> {
         let table = Self::new();
         Delete {
             qualifiers: list(&table),
@@ -693,64 +780,6 @@ impl fmt::Display for DateTime {
 }
 
 #[macro_export]
-macro_rules! select {
-    (@unfold { $(,)* => $($exprs:tt)+ } => { $($key:ident: $value:expr,)* }) => {
-        $crate::select($crate::data!{ $($key : $value),* }, |__internal| {
-            $(
-                #[allow(unused_variables)]
-                let $key = __internal.$key;
-            )*
-
-            {
-                $($exprs)+
-            }
-        })
-    };
-    (@unfold { $(,)* } => { $($rest:tt)* }) => {
-        $crate::select!(@unfold { => $crate::qualifiers::AllRows } => { $($rest)* })
-    };
-
-    // expressions surrounded by [] are interpreted via expr!()
-    (@unfold { $(,)* $key:ident: [$($tt:tt)*] } => { $($unfolded:tt)* }) => {
-        $crate::select!(@unfold { } => { $($unfolded)* $key: $crate::expr!($($tt)*), })
-    };
-
-    // The following three cases are "key: expr"  followed by ", $rest" or "=> $rest" or "", since there is no or operator in macro_rules!
-    (@unfold { $(,)* $key:ident: $value:expr, $($rest:tt)* } => { $($unfolded:tt)* }) => {
-        $crate::select!(@unfold { $($rest)* } => { $($unfolded)* $key: $value, })
-    };
-    (@unfold { $(,)* $key:ident: $value:expr => $($rest:tt)* } => { $($unfolded:tt)* }) => {
-        $crate::select!(@unfold { => $($rest)* } => { $($unfolded)* $key: $value, })
-    };
-    (@unfold { $(,)* $key:ident: $value:expr } => { $($unfolded:tt)* }) => {
-        $crate::select!(@unfold { } => { $($unfolded)* $key: $value, })
-    };
-    // shorthand 'a.b' expands to 'b: a.b'
-    (@unfold { $(,)* $a:ident.$b:ident $($rest:tt)* } => { $($unfolded:tt)* }) => {
-        $crate::select!(@unfold { $($rest)* } => { $($unfolded)* $b: $a.$b, })
-    };
-
-    // a single [...] expands to _value: expr!(...)
-    (@unfold { $(,)* [$($tt:tt)*] $(=> $($rest:tt)*)? } => { $($unfolded:tt)* }) => {
-        $crate::select!(@unfold { $(=> $($rest)*)? } => { $($unfolded)* _value: $crate::expr!($($tt)*), })
-    };
-    // just a single expression $e expands to '_value: $e'
-    (@unfold { $(,)* $e:expr $(=> $($rest:tt)*)? } => { $($unfolded:tt)* }) => {
-        $crate::select!(@unfold { $(=> $($rest)*)? } => { $($unfolded)* _value: $e, })
-    };
-
-    (@unfold $($any:tt)*) => {
-        compile_error!(concat!("unfolding of select! is missing a rule for ", stringify!($($any)*)))
-    };
-
-    // Entry point
-    ($($rest:tt)*) => {
-        //
-        $crate::select!{ @unfold { $($rest)* } => { } }
-    };
-}
-
-#[macro_export]
 #[doc(hidden)]
 macro_rules! count {
     ($v:tt, $($tts:tt),*) => {
@@ -760,6 +789,65 @@ macro_rules! count {
     () => { 0 }
 }
 
+/// Generates a [`SelectedData`] anonymous struct from a list of expressions.
+/// Each expression must be separated by a comma (,).
+/// Fields can be specified in a `struct`-like syntax:
+/// ```rust
+/// # #![feature(generic_associated_types)] 
+/// # use typed_qb::prelude::*;
+/// # #[derive(Default)]
+/// # struct Table { id: (), name: (), }
+/// # let table = Table::default();
+/// let data = data! {
+///     a: table.id,
+///     b: table.name,
+/// };
+/// ```
+/// 
+/// An expression of the form `a.b` is shorthand for `b: a.b`:
+/// 
+/// ```rust
+/// # #![feature(generic_associated_types)] 
+/// # use typed_qb::prelude::*;
+/// # #[derive(Default)]
+/// # struct Table { id: (), name: (), }
+/// # let table = Table::default();
+/// let data = data! {
+///     table.id,
+///     table.name,
+/// };
+/// // data contains two fields: id and name
+/// ```
+/// 
+/// `[...]` can be used to include a SQL expression via [expr!]:
+/// 
+/// ```rust
+/// # #![feature(generic_associated_types)] 
+/// # use typed_qb::prelude::*;
+/// # #[derive(Default)]
+/// # struct Table { id: (), name: (), }
+/// # let table = Table::default();
+/// let data = data! {
+///     a: table.id,
+///     b: [COUNT(*)], // equivalent to: expr!(COUNT(*))
+/// };
+/// ```
+/// 
+/// When a single expression is provided, it is automatically named '_value':
+/// 
+/// ```rust
+/// # #![feature(generic_associated_types)] 
+/// # use typed_qb::prelude::*;
+/// # #[derive(Default)]
+/// # struct Table { id: (), name: (), }
+/// # let table = Table::default();
+/// let data = data! { 
+///     [COUNT(*)]
+/// };
+/// // data now contains a single field `data._value`
+/// ```
+/// 
+/// [`SelectedData`] is automatically derived for the anonymous struct.
 #[macro_export]
 macro_rules! data {
     (impl QueryTree @ $($key:ident),*) => {
@@ -855,9 +943,6 @@ macro_rules! data {
     (impl Preprocess @ { $(,)* $key:ident: $value:expr$(, $($rest:tt)*)? } => { $($unfolded:tt)* }) => {
         $crate::data!(impl Preprocess @ { $($($rest)*)? } => { $($unfolded)* $key: $value, })
     };
-    // (impl Preprocess @ { $(,)* $key:ident: $value:expr } => { $($unfolded:tt)* }) => {
-    //     $crate::data!(impl Preprocess @ { } => { $($unfolded)* $key: $value, })
-    // };
     // shorthand 'a.b' expands to 'b: a.b'
     (impl Preprocess @ { $(,)* $a:ident.$b:ident $($rest:tt)* } => { $($unfolded:tt)* }) => {
         $crate::data!(impl Preprocess @ { $($rest)* } => { $($unfolded)* $b: $a.$b, })
@@ -1136,6 +1221,59 @@ pub trait ToSql {
     fn collect_parameters(&self, f: &mut Vec<QueryValue>);
 }
 
+#[doc(hidden)]
+pub mod __doctest {
+    use crate::select::SelectQuery;
+    use crate::mysql::CollectResults;
+    use crate::typing::*;
+    use crate::*;
+    pub use crate::prelude::*;
+
+    crate::table! {
+        Users "Users" {
+            id "Id": SimpleTy<BigInt<Signed>, NonNullable>,
+            name "Name": SimpleTy<Text, NonNullable>,
+        }
+    }
+
+    crate::table ! {
+        Questions "Questions" {
+            id "Id": SimpleTy<BigInt<Signed>, NonNullable>,
+            text "Text": SimpleTy<Text, NonNullable>,
+            asked_by_id "AskedById": SimpleTy<BigInt<Signed>, NonNullable>,
+        }
+    }
+
+    pub struct FakeConn;
+
+    impl Database for FakeConn {
+        type Iter<'a, Q: select::SelectQuery> = std::vec::IntoIter<Result<<<Q as SelectQuery>::Columns as select::SelectedData>::Queried, ::mysql::Error>>;
+
+        fn typed_query<'a, Q: select::SelectQuery + QueryRoot>(
+            &'a mut self,
+            _query: Q,
+        ) -> Result<
+            <<Q as select::SelectQuery>::Rows as mysql::CollectResults<
+                <Q::Columns as SelectedData>::Queried,
+                Self::Iter<'a, Q>,
+            >>::PartialOutput,
+            ::mysql::Error,
+        >
+        where
+            <Q as select::SelectQuery>::Rows:
+                mysql::CollectResults<<Q::Columns as SelectedData>::Queried, Self::Iter<'a, Q>> {
+            // TODO: This will crash if we expect exactly one result
+            <Q as SelectQuery>::Rows::collect_results(Vec::new().into_iter())
+        }
+
+        fn typed_exec<'a, Q: QueryRoot>(&'a mut self, _query: Q) -> Result<(), ::mysql::Error> {
+            Ok(())
+        }
+    }
+
+    pub fn ground<T: QueryTree<UpEnd>>(t: T) -> T { t }        
+}
+
 #[cfg(test)]
 mod tests {
     macro_rules! check_lift_if {
@@ -1146,6 +1284,7 @@ mod tests {
 
     #[test]
     pub fn lift_if_test() {
+        #[allow(unused_braces)]
         for a in [false, true] {
             check_lift_if!(if a { 5 } else { 3 })
         }

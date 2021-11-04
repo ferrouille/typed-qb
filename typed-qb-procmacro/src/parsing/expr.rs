@@ -1,3 +1,4 @@
+use crate::parsing::parse_keyword;
 use proc_macro2::{Ident, Span, TokenStream};
 use std::fmt;
 use std::fmt::Write;
@@ -7,8 +8,6 @@ use syn::{
     punctuated::Punctuated,
     Block, Lit, Token,
 };
-
-use crate::parsing::parse_keyword;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum Either<A, B> {

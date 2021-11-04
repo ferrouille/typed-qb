@@ -1,5 +1,3 @@
-#![allow(non_snake_case)]
-
 use crate::{
     expr::{Distinct, Star, Value},
     typing::{BigInt, Grouped, NonNullable, Nullable, Signed, SimpleTy, Ty, Unsigned},
@@ -16,6 +14,7 @@ impl<U: Up, V: Value + QueryTree<U>> QueryTree<U> for Sum<V> {
     type MaxUp = V::MaxUp;
 }
 
+#[allow(non_snake_case)]
 pub fn SUM<V: Value>(of: V) -> Sum<V> {
     Sum { of }
 }
@@ -42,6 +41,7 @@ impl<U: Up, V: Value + QueryTree<U>> QueryTree<U> for Max<V> {
     type MaxUp = V::MaxUp;
 }
 
+#[allow(non_snake_case)]
 pub fn MAX<V: Value>(of: V) -> Max<V> {
     Max { of }
 }
@@ -69,6 +69,7 @@ impl<U: Up, X: Value + QueryTree<U>, Y: Value + QueryTree<X::MaxUp>> QueryTree<U
     type MaxUp = Y::MaxUp;
 }
 
+#[allow(non_snake_case)]
 pub fn IFNULL<X: Value, Y: Value>(x: X, y: Y) -> IfNull<X, Y> {
     IfNull { val: x, ifnull: y }
 }
@@ -105,6 +106,7 @@ impl<U: Up, V: ValueStarOrDistinct + QueryTree<U>> QueryTree<U> for Count<V> {
     type MaxUp = V::MaxUp;
 }
 
+#[allow(non_snake_case)]
 pub fn COUNT<V: ValueStarOrDistinct>(of: V) -> Count<V> {
     Count { of }
 }

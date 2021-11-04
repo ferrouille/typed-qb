@@ -1,19 +1,51 @@
-use std::{fmt, marker::PhantomData};
+//! `SELECT` queries
+//! 
+//! ```rust
+//! # #![feature(generic_associated_types)] 
+//! # use typed_qb::__doctest::*; 
+//! # let mut conn = FakeConn;
+//! let name = "root";
+//! let results = conn.typed_exec(Users::query(|user| user.name))?;
+//! # Ok::<(), mysql::Error>(())
+//! ```
 
-use log::debug;
 
 use crate::prelude::AllRows;
 use crate::qualifiers::AnyLimit;
 use crate::typing::{
-    AllNullable, CombineGrouping, Grouped, IsGrouped, KeepOriginalNullability, NullabilityModifier,
-    Ty, Undetermined, Ungrouped,
+    AllNullable, Grouped, IsGrouped, KeepOriginalNullability, NullabilityModifier, Ty,
+    Undetermined, Ungrouped,
 };
 use crate::{
     expr::Value, Alias, ConstSqlStr, QueryRoot, QueryTree, QueryValue, TableAlias, TableReference,
     ToSql, Up, UpEnd, UpOne,
 };
 use crate::{sql_concat, Field, FieldName, Fieldable};
+use log::debug;
+use std::{fmt, marker::PhantomData};
 
+/// Specify `WHERE`, `ORDER BY`, `GROUP BY`, `LIMIT`, etc. clauses on [`SelectedData`].
+/// 
+/// See also [`data!`].
+/// 
+/// ```rust
+/// # #![feature(generic_associated_types)] 
+/// # use typed_qb::__doctest::*; 
+/// # let mut conn = FakeConn;
+/// let results = conn.typed_query(Users::query(|user|
+///     select(data! {
+///         id: user.id,
+///         username: user.name,
+///     }, |selected|
+///         expr!(selected.id < 100)
+///             .order_by(selected.username.asc()
+///                 .then_by(user.name.desc())
+///             )
+///             .limit::<5>()
+///     )
+/// ))?;
+/// # Ok::<(), mysql::Error>(())
+/// ```
 pub fn select<D: SelectedData, L: AnyLimit>(
     data: D,
     qualifiers: impl FnOnce(&D::Instantiated<()>) -> L,
@@ -64,6 +96,7 @@ pub trait SelectQuery {
 
 pub trait FromTables {}
 
+#[doc(hidden)]
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct NilTable;
 impl FromTables for NilTable {}
@@ -84,6 +117,9 @@ pub trait PartialSelect<D: SelectedData, L: AnyLimit> {
     fn map_from<T: FromTables, F: FnOnce(Self::From) -> T>(self, f: F) -> Select<D, L, T>;
 }
 
+/// Describes any data selected from a table.
+/// You should **not** implement this trait.
+/// Instead, use the [`data!`] macro.
 pub trait SelectedData: Sized {
     type Instantiated<A: TableAlias>;
     type Queried;
@@ -312,6 +348,7 @@ impl<
     type Grouped = Undetermined;
 }
 
+/// See [super::Table::query].
 #[derive(Debug, Clone)]
 pub struct SelectWithoutFrom<D: SelectedData, L: AnyLimit> {
     data: D,
@@ -364,6 +401,7 @@ pub struct SingleColumn<T, M> {
     _phantom: PhantomData<M>,
 }
 
+#[doc(hidden)]
 pub struct SingleColumnFieldName;
 impl FieldName for SingleColumnFieldName {
     const NAME: &'static str = "value";
@@ -504,6 +542,7 @@ impl<U: Up, A: TableAlias, T: TableReference + ToSql, F: FromTables + ToSql> ToS
 }
 
 // TODO: UNIONs
+/// See [super::Table::left_join].
 #[derive(Debug)]
 pub struct LeftJoin<U: Up, A: TableAlias, N: TableReference, V: Value, F: FromTables> {
     condition: V,
@@ -556,6 +595,7 @@ impl<U: Up, A: TableAlias, N: TableReference + ToSql, V: Value + ToSql, F: FromT
     }
 }
 
+/// See [super::Table::inner_join].
 #[derive(Debug)]
 pub struct InnerJoin<U: Up, A: TableAlias, N: TableReference, V: Value, F: FromTables> {
     condition: V,
