@@ -1098,7 +1098,7 @@ dependencies = [
 
 [[package]]
 name = "typed-qb"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "chrono",
  "concat-idents",
@@ -1110,7 +1110,7 @@ dependencies = [
 
 [[package]]
 name = "typed-qb-procmacro"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "proc-macro2",
  "quote",
