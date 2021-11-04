@@ -1,0 +1,9 @@
+[workspace]
+members = [
+    "typed-qb",
+    "typed-qb-procmacro",
+]
+
+[profile.release]
+lto = true
+codegen-units = 1

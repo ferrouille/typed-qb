@@ -1,0 +1,20 @@
+[package]
+name = "typed-qb"
+version = "0.1.0"
+authors = ["ferrouille <git@ferrouille.nl>"]
+edition = "2021"
+license = "MPL-2.0"
+repository = "https://github.com/ferrouille/typed-qb"
+description = "A query builder that builds and typechecks queries at compile time"
+readme = "../README.md"
+exclude = ["examples/"]
+
+[dependencies]
+mysql = "20"
+typed-qb-procmacro = { path = "../typed-qb-procmacro", version = "0.1" }
+log = "0.4"
+concat-idents = "1.1.3"
+chrono = "0.4"
+
+[dev-dependencies]
+env_logger = "0.9"
