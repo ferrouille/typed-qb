@@ -16,7 +16,7 @@
 //! `typed-qb` is a compile-time, typed, query builder.
 //! The query is transformed into an SQL query string at compile time.
 //! If code compiles and the schema in the code matches the database, it should be (*almost*) impossible to write queries that produce errors.
-//! 
+//!
 //! Make sure to enable the `generic_associated_types` feature and include the prelude:
 //! ```rust
 //! #![feature(generic_associated_types)]
@@ -54,7 +54,7 @@
 //!     .pass(Some("..."))
 //!     .db_name(Some("..."));
 //! let pool = mysql::Pool::new(opts)?;
-//! 
+//!
 //! let mut conn = pool.get_conn()?;
 //! let results = conn.typed_query(query)?;
 //! # Ok::<(), mysql::Error>(())
@@ -543,12 +543,12 @@ pub trait Table: Sized {
 
     // TODO: Can we implement some kind of trait to allow IntoPartialSelect to be passed directy into this function?
     /// `SELECT` data from the table.
-    /// 
+    ///
     /// See also [`data`] and [`select`](select::select).
-    /// 
-    /// ```rust 
-    /// # #![feature(generic_associated_types)] 
-    /// # use typed_qb::__doctest::*; 
+    ///
+    /// ```rust
+    /// # #![feature(generic_associated_types)]
+    /// # use typed_qb::__doctest::*;
     /// # let mut conn = FakeConn;
     /// let results = conn.typed_query(Users::query(|user| {
     ///     data! {
@@ -584,16 +584,16 @@ pub trait Table: Sized {
     }
 
     /// `LEFT JOIN` the table.
-    /// 
+    ///
     /// `condition` takes a [TableReference](TableReference) to the newly joined data, and expects a boolean expression as a return value.
     /// The condition is what you would normally write for the `ON ...` part of a `JOIN`.
     /// Usually this is something like `expr!(foo_table.id = bar_table.foo_id)`.
-    /// 
+    ///
     /// `data` takes a [TableReference](TableReference) to the newly joined data, and expects the rest of the query as a return value.
-    /// 
+    ///
     /// ```rust
-    /// # #![feature(generic_associated_types)] 
-    /// # use typed_qb::__doctest::*; 
+    /// # #![feature(generic_associated_types)]
+    /// # use typed_qb::__doctest::*;
     /// # let mut conn = FakeConn;
     /// let results = conn.typed_query(Users::query(|user|
     ///     Questions::left_join(
@@ -602,7 +602,7 @@ pub trait Table: Sized {
     ///             id: user.id,
     ///             username: user.name,
     ///             num_questions: [COUNT(*)],
-    ///         }, |_| AllRows.group_by(user.id)) 
+    ///         }, |_| AllRows.group_by(user.id))
     ///     )
     /// ))?;
     /// # Ok::<(), mysql::Error>(())
@@ -636,9 +636,8 @@ pub trait Table: Sized {
             .map_from(|next| LeftJoin::new(condition(&table), table, next))
     }
 
-
     /// `INNER JOIN` the table.
-    /// 
+    ///
     /// See [Table::left_join]
     fn inner_join<
         U: Up,
@@ -669,7 +668,6 @@ pub trait Table: Sized {
             .map_from(|next| InnerJoin::new(condition(&table), table, next))
     }
 
-
     /// `UPDATE` rows of the table.
     fn update<
         S: SetList,
@@ -697,8 +695,10 @@ pub trait Table: Sized {
         }
     }
 
-    /// `DELETE FROM` the table. 
-    fn delete<L: DeleteQualifiers, F: FnOnce(&Self::WithAlias<()>) -> L>(list: F) -> Delete<Self, L> {
+    /// `DELETE FROM` the table.
+    fn delete<L: DeleteQualifiers, F: FnOnce(&Self::WithAlias<()>) -> L>(
+        list: F,
+    ) -> Delete<Self, L> {
         let table = Self::new();
         Delete {
             qualifiers: list(&table),
@@ -793,7 +793,7 @@ macro_rules! count {
 /// Each expression must be separated by a comma (,).
 /// Fields can be specified in a `struct`-like syntax:
 /// ```rust
-/// # #![feature(generic_associated_types)] 
+/// # #![feature(generic_associated_types)]
 /// # use typed_qb::prelude::*;
 /// # #[derive(Default)]
 /// # struct Table { id: (), name: (), }
@@ -803,11 +803,11 @@ macro_rules! count {
 ///     b: table.name,
 /// };
 /// ```
-/// 
+///
 /// An expression of the form `a.b` is shorthand for `b: a.b`:
-/// 
+///
 /// ```rust
-/// # #![feature(generic_associated_types)] 
+/// # #![feature(generic_associated_types)]
 /// # use typed_qb::prelude::*;
 /// # #[derive(Default)]
 /// # struct Table { id: (), name: (), }
@@ -818,11 +818,11 @@ macro_rules! count {
 /// };
 /// // data contains two fields: id and name
 /// ```
-/// 
+///
 /// `[...]` can be used to include a SQL expression via [expr!]:
-/// 
+///
 /// ```rust
-/// # #![feature(generic_associated_types)] 
+/// # #![feature(generic_associated_types)]
 /// # use typed_qb::prelude::*;
 /// # #[derive(Default)]
 /// # struct Table { id: (), name: (), }
@@ -832,21 +832,21 @@ macro_rules! count {
 ///     b: [COUNT(*)], // equivalent to: expr!(COUNT(*))
 /// };
 /// ```
-/// 
+///
 /// When a single expression is provided, it is automatically named '_value':
-/// 
+///
 /// ```rust
-/// # #![feature(generic_associated_types)] 
+/// # #![feature(generic_associated_types)]
 /// # use typed_qb::prelude::*;
 /// # #[derive(Default)]
 /// # struct Table { id: (), name: (), }
 /// # let table = Table::default();
-/// let data = data! { 
+/// let data = data! {
 ///     [COUNT(*)]
 /// };
 /// // data now contains a single field `data._value`
 /// ```
-/// 
+///
 /// [`SelectedData`] is automatically derived for the anonymous struct.
 #[macro_export]
 macro_rules! data {
@@ -1223,11 +1223,11 @@ pub trait ToSql {
 
 #[doc(hidden)]
 pub mod __doctest {
-    use crate::select::SelectQuery;
     use crate::mysql::CollectResults;
+    pub use crate::prelude::*;
+    use crate::select::SelectQuery;
     use crate::typing::*;
     use crate::*;
-    pub use crate::prelude::*;
 
     crate::table! {
         Users "Users" {
@@ -1236,7 +1236,7 @@ pub mod __doctest {
         }
     }
 
-    crate::table ! {
+    crate::table! {
         Questions "Questions" {
             id "Id": SimpleTy<BigInt<Signed>, NonNullable>,
             text "Text": SimpleTy<Text, NonNullable>,
@@ -1247,7 +1247,9 @@ pub mod __doctest {
     pub struct FakeConn;
 
     impl Database for FakeConn {
-        type Iter<'a, Q: select::SelectQuery> = std::vec::IntoIter<Result<<<Q as SelectQuery>::Columns as select::SelectedData>::Queried, ::mysql::Error>>;
+        type Iter<'a, Q: select::SelectQuery> = std::vec::IntoIter<
+            Result<<<Q as SelectQuery>::Columns as select::SelectedData>::Queried, ::mysql::Error>,
+        >;
 
         fn typed_query<'a, Q: select::SelectQuery + QueryRoot>(
             &'a mut self,
@@ -1261,7 +1263,8 @@ pub mod __doctest {
         >
         where
             <Q as select::SelectQuery>::Rows:
-                mysql::CollectResults<<Q::Columns as SelectedData>::Queried, Self::Iter<'a, Q>> {
+                mysql::CollectResults<<Q::Columns as SelectedData>::Queried, Self::Iter<'a, Q>>,
+        {
             // TODO: This will crash if we expect exactly one result
             <Q as SelectQuery>::Rows::collect_results(Vec::new().into_iter())
         }
@@ -1271,7 +1274,9 @@ pub mod __doctest {
         }
     }
 
-    pub fn ground<T: QueryTree<UpEnd>>(t: T) -> T { t }        
+    pub fn ground<T: QueryTree<UpEnd>>(t: T) -> T {
+        t
+    }
 }
 
 #[cfg(test)]
@@ -1289,12 +1294,60 @@ mod tests {
             check_lift_if!(if a { 5 } else { 3 })
         }
 
+        for b in [false, true] {
+            for c in [false, true] {
+                println!("b={:?}, c={:?}", b, c);
+                check_lift_if!({
+                    let x = if b { 7 } else { 1 };
+
+                    if c {
+                        x * 2
+                    } else {
+                        x
+                    }
+                })
+            }
+        }
+
         for a in [false, true] {
             for b in [false, true] {
                 for c in [false, true] {
                     println!("a={:?}, b={:?}, c={:?}", a, b, c);
                     check_lift_if!(if a {
                         let x = if b { 7 } else { 1 };
+
+                        if c {
+                            x * 2
+                        } else {
+                            x
+                        }
+                    } else {
+                        3
+                    })
+                }
+            }
+        }
+    }
+
+    #[test]
+    pub fn lift_match() {
+        for a in [false, true] {
+            check_lift_if!(match a {
+                true => 5,
+                false => 3,
+            })
+        }
+
+        for a in [false, true] {
+            for b in [7, 9, 12] {
+                for c in [false, true] {
+                    println!("a={:?}, b={:?}, c={:?}", a, b, c);
+                    check_lift_if!(if a {
+                        let x = match b {
+                            7 => 2,
+                            9 => 4,
+                            _ => 1,
+                        };
 
                         if c {
                             x * 2

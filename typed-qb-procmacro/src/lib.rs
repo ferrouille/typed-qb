@@ -34,9 +34,11 @@ pub fn tables(tokens: proc_macro::TokenStream) -> proc_macro::TokenStream {
     ts.into()
 }
 
-/// Lifts the if statements to the top, duplicating code around the ifs.
+/// Lifts the `if` and `match` statements to the top, duplicating code.
 /// For example, the following code:
-/// ```rust,ignore
+/// ```rust
+/// # use typed_qb_procmacro::lift_if; let a = 3;
+/// # fn do_things() { }
 /// lift_if! {
 ///     let x = 10;
 ///     do_things();
@@ -48,7 +50,8 @@ pub fn tables(tokens: proc_macro::TokenStream) -> proc_macro::TokenStream {
 /// }
 /// ```
 /// Is expanded to:
-/// ```rust,ignore
+/// ```rust
+/// # fn do_things() { }; let a = 3;
 /// if a == 5 {
 ///     let x = 10;
 ///     do_things();
@@ -72,7 +75,7 @@ pub fn lift_if(tokens: proc_macro::TokenStream) -> proc_macro::TokenStream {
 
     let (num, binary_tree) = conditions.create_binary_tree(0);
 
-    let mut choices = vec![true; num];
+    let mut choices = vec![0; num];
     let block = binary_tree.codegen(&mut choices, &parsed, &conditions);
 
     let mut ts = TokenStream::new();

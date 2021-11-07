@@ -1,14 +1,13 @@
 //! `SELECT` queries
-//! 
+//!
 //! ```rust
-//! # #![feature(generic_associated_types)] 
-//! # use typed_qb::__doctest::*; 
+//! # #![feature(generic_associated_types)]
+//! # use typed_qb::__doctest::*;
 //! # let mut conn = FakeConn;
 //! let name = "root";
 //! let results = conn.typed_exec(Users::query(|user| user.name))?;
 //! # Ok::<(), mysql::Error>(())
 //! ```
-
 
 use crate::prelude::AllRows;
 use crate::qualifiers::AnyLimit;
@@ -25,12 +24,12 @@ use log::debug;
 use std::{fmt, marker::PhantomData};
 
 /// Specify `WHERE`, `ORDER BY`, `GROUP BY`, `LIMIT`, etc. clauses on [`SelectedData`].
-/// 
+///
 /// See also [`data!`].
-/// 
+///
 /// ```rust
-/// # #![feature(generic_associated_types)] 
-/// # use typed_qb::__doctest::*; 
+/// # #![feature(generic_associated_types)]
+/// # use typed_qb::__doctest::*;
 /// # let mut conn = FakeConn;
 /// let results = conn.typed_query(Users::query(|user|
 ///     select(data! {

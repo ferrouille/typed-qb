@@ -1,13 +1,13 @@
 //! `INSERT` queries
-//! 
+//!
 //! **Note:** There are currently no checks against duplicate fields or missing fields without default value.
-//! 
+//!
 //! **Note:** There are currently no checks against using a field from the table in an expression.
 //! That is, `INSERT INTO table (field) VALUES (table.field)` will not cause a compile error.
-//! 
+//!
 //! ```rust
-//! # #![feature(generic_associated_types)] 
-//! # use typed_qb::__doctest::*; 
+//! # #![feature(generic_associated_types)]
+//! # use typed_qb::__doctest::*;
 //! # let mut conn = FakeConn;
 //! let name = "root";
 //! let results = conn.typed_exec(Users::insert(|user| values! {

@@ -1,4 +1,8 @@
-use syn::{token::Semi, Block, Expr, ExprBlock, ExprIf, Item, Local, Stmt};
+use proc_macro2::Span;
+use syn::{
+    token::{If, Semi},
+    Arm, Block, Expr, ExprBlock, ExprLit, ExprMatch, Item, Lit, LitBool, Local, Pat, PatLit, Stmt,
+};
 
 #[derive(Debug)]
 pub struct ConditionTree {
@@ -10,20 +14,27 @@ impl ConditionTree {
         ConditionTree { inner: Vec::new() }
     }
 
-    pub fn cond(&mut self, cond: Expr, left: ConditionTree, right: Option<ConditionTree>) {
-        self.inner.push(ConditionItem { cond, left, right })
+    pub fn cond(
+        &mut self,
+        cond: Expr,
+        branches: Vec<(Pat, Option<(If, Box<Expr>)>, ConditionTree)>,
+    ) {
+        self.inner.push(ConditionItem {
+            expr: cond,
+            branches,
+        })
     }
 
     pub fn create_apply_tree<'a>(
         &self,
-        mut choices: &'a [bool],
+        mut choices: &'a [usize],
         target: &mut Vec<ApplyItem>,
-    ) -> &'a [bool] {
+    ) -> Result<&'a [usize], BranchOverflow> {
         for item in self.inner.iter() {
-            choices = item.create_apply_tree(choices, target);
+            choices = item.create_apply_tree(choices, target)?;
         }
 
-        choices
+        Ok(choices)
     }
 
     pub fn create_binary_tree(&self, mut index: usize) -> (usize, BinaryConditionTree) {
@@ -48,50 +59,47 @@ impl ConditionTree {
 
 #[derive(Debug)]
 pub struct ConditionItem {
-    cond: Expr,
-    left: ConditionTree,
-    right: Option<ConditionTree>,
+    expr: Expr,
+    branches: Vec<(Pat, Option<(If, Box<Expr>)>, ConditionTree)>,
 }
+
+pub struct BranchOverflow(usize);
 
 impl ConditionItem {
     pub fn create_apply_tree<'a>(
         &self,
-        choices: &'a [bool],
+        choices: &'a [usize],
         target: &mut Vec<ApplyItem>,
-    ) -> &'a [bool] {
+    ) -> Result<&'a [usize], BranchOverflow> {
         let (choice, choices) = choices.split_first().unwrap();
 
         target.push(ApplyItem {
-            cond_is_true: *choice,
+            branch_taken: *choice,
         });
 
-        if *choice {
-            self.left.create_apply_tree(choices, target)
-        } else {
-            if let Some(right) = &self.right {
-                right.create_apply_tree(choices, target)
-            } else {
-                choices
-            }
+        match self.branches.get(*choice) {
+            Some((_, _, branch)) => Ok(branch.create_apply_tree(choices, target)?),
+            None => Err(BranchOverflow(choices.len())),
         }
     }
 
-    pub fn create_binary_tree(&self, index: usize) -> (usize, BinaryConditionTree) {
+    pub fn create_binary_tree(&self, mut index: usize) -> (usize, BinaryConditionTree) {
         let original_index = index;
-        let (index, left) = self.left.create_binary_tree(index + 1);
-        let (index, right) = self
-            .right
-            .as_ref()
-            .map(|t| t.create_binary_tree(index))
-            .unwrap_or((index, BinaryConditionTree::Leaf));
+        index += 1;
+
+        let mut branches = Vec::new();
+        for (pat, guard, branch) in self.branches.iter() {
+            let (new_index, new_branch) = branch.create_binary_tree(index);
+            index = new_index;
+            branches.push((pat.clone(), guard.clone(), new_branch));
+        }
 
         (
             index,
             BinaryConditionTree::Node {
                 index: original_index,
-                cond: self.cond.clone(),
-                left: Box::new(left),
-                right: Box::new(right),
+                expr: self.expr.clone(),
+                branches,
             },
         )
     }
@@ -101,9 +109,8 @@ impl ConditionItem {
 pub enum BinaryConditionTree {
     Node {
         index: usize,
-        cond: Expr,
-        left: Box<BinaryConditionTree>,
-        right: Box<BinaryConditionTree>,
+        expr: Expr,
+        branches: Vec<(Pat, Option<(If, Box<Expr>)>, BinaryConditionTree)>,
     },
     Leaf,
 }
@@ -111,9 +118,10 @@ pub enum BinaryConditionTree {
 impl BinaryConditionTree {
     pub fn expand_leaves(&mut self, new_leaf: &BinaryConditionTree) {
         match self {
-            BinaryConditionTree::Node { left, right, .. } => {
-                left.expand_leaves(new_leaf);
-                right.expand_leaves(new_leaf);
+            BinaryConditionTree::Node { branches, .. } => {
+                for (_, _, branch) in branches.iter_mut() {
+                    branch.expand_leaves(new_leaf);
+                }
             }
             BinaryConditionTree::Leaf => *self = new_leaf.clone(),
         }
@@ -121,38 +129,44 @@ impl BinaryConditionTree {
 
     pub fn codegen(
         &self,
-        choices: &mut [bool],
+        choices: &mut [usize],
         source: &Block,
         condition_tree: &ConditionTree,
     ) -> Expr {
         match self {
             BinaryConditionTree::Node {
                 index,
-                cond,
-                left,
-                right,
+                expr,
+                branches,
             } => {
-                choices[*index] = true;
-                let then_branch = left.codegen(choices, source, condition_tree);
+                let mut arms = Vec::new();
+                for (n, (pat, guard, branch)) in branches.iter().enumerate() {
+                    choices[*index] = n;
+                    let branch = branch.codegen(choices, source, condition_tree);
+                    arms.push(Arm {
+                        attrs: Vec::new(),
+                        pat: pat.clone(),
+                        guard: guard.clone(),
+                        fat_arrow_token: Default::default(),
+                        body: Box::new(branch),
+                        comma: Default::default(),
+                    });
+                }
 
-                choices[*index] = false;
-                let else_branch = right.codegen(choices, source, condition_tree);
-
-                Expr::If(ExprIf {
+                Expr::Match(ExprMatch {
                     attrs: Vec::new(),
-                    if_token: Default::default(),
-                    cond: Box::new(cond.clone()),
-                    then_branch: Block {
-                        brace_token: Default::default(),
-                        stmts: vec![Stmt::Expr(then_branch)],
-                    },
-                    else_branch: Some((Default::default(), Box::new(else_branch))),
+                    match_token: Default::default(),
+                    expr: Box::new(expr.clone()),
+                    brace_token: Default::default(),
+                    arms,
                 })
             }
             BinaryConditionTree::Leaf => {
                 let mut result = source.clone();
                 let mut apply_tree = Vec::new();
-                condition_tree.create_apply_tree(choices, &mut apply_tree);
+                condition_tree
+                    .create_apply_tree(choices, &mut apply_tree)
+                    .unwrap_or_else(|_| unreachable!());
                 let remaining = result.apply_conditions(&apply_tree);
                 assert!(remaining.is_empty());
 
@@ -168,7 +182,7 @@ impl BinaryConditionTree {
 
 #[derive(Debug)]
 pub struct ApplyItem {
-    cond_is_true: bool,
+    branch_taken: usize,
 }
 
 pub trait IfLifting {
@@ -315,7 +329,33 @@ impl IfLifting for Expr {
                     conds
                 });
 
-                c.cond(e.cond.as_ref().clone(), then_conds, else_conds);
+                let mut branches = vec![(
+                    Pat::Lit(PatLit {
+                        attrs: Vec::new(),
+                        expr: Box::new(Expr::Lit(ExprLit {
+                            attrs: Vec::new(),
+                            lit: Lit::Bool(LitBool::new(true, Span::call_site())),
+                        })),
+                    }),
+                    None,
+                    then_conds,
+                )];
+
+                if let Some(else_conds) = else_conds {
+                    branches.push((
+                        Pat::Lit(PatLit {
+                            attrs: Vec::new(),
+                            expr: Box::new(Expr::Lit(ExprLit {
+                                attrs: Vec::new(),
+                                lit: Lit::Bool(LitBool::new(false, Span::call_site())),
+                            })),
+                        }),
+                        None,
+                        else_conds,
+                    ));
+                }
+
+                c.cond(e.cond.as_ref().clone(), branches);
             }
             Expr::Index(e) => {
                 e.expr.extract_conditions(c);
@@ -329,9 +369,15 @@ impl IfLifting for Expr {
             }
             Expr::Match(e) => {
                 e.expr.extract_conditions(c);
+
+                let mut branches = Vec::new();
                 for arm in e.arms.iter() {
-                    arm.body.extract_conditions(c);
+                    let mut branch = ConditionTree::new();
+                    arm.body.extract_conditions(&mut branch);
+                    branches.push((arm.pat.clone(), arm.guard.clone(), branch));
                 }
+
+                c.cond(e.expr.as_ref().clone(), branches);
             }
             Expr::MethodCall(e) => {
                 e.receiver.extract_conditions(c);
@@ -455,23 +501,27 @@ impl IfLifting for Expr {
             Expr::Group(e) => e.expr.apply_conditions(c),
             Expr::If(e) => {
                 let (first, rest) = c.split_first().unwrap();
-                if first.cond_is_true {
-                    c = e.then_branch.apply_conditions(rest);
-                    *self = Expr::Block(ExprBlock {
-                        attrs: Vec::new(),
-                        label: None,
-                        block: e.then_branch.clone(),
-                    });
-                } else {
-                    *self = e
-                        .else_branch
-                        .as_ref()
-                        .map(|(_, e)| {
-                            let mut e = e.as_ref().clone();
-                            c = e.apply_conditions(rest);
-                            e
-                        })
-                        .expect("Unfolding ifs without else branches is currently not supported");
+                match first.branch_taken {
+                    0 => {
+                        c = e.then_branch.apply_conditions(rest);
+                        *self = Expr::Block(ExprBlock {
+                            attrs: Vec::new(),
+                            label: None,
+                            block: e.then_branch.clone(),
+                        });
+                    }
+                    1 => {
+                        *self = e
+                            .else_branch
+                            .as_ref()
+                            .map(|(_, e)| {
+                                let mut e = e.as_ref().clone();
+                                c = e.apply_conditions(rest);
+                                e
+                            })
+                            .expect("Else branch cannot be taken if it does not exist");
+                    }
+                    _ => unreachable!("branch_taken must be 0 or 1 for an if statement"),
                 }
 
                 c
@@ -483,10 +533,11 @@ impl IfLifting for Expr {
             Expr::Let(e) => e.expr.apply_conditions(c),
             Expr::Loop(e) => e.body.apply_conditions(c),
             Expr::Match(e) => {
-                c = e.expr.apply_conditions(c);
-                for arm in e.arms.iter_mut() {
-                    c = arm.body.apply_conditions(c);
-                }
+                let (first, rest) = c.split_first().unwrap();
+                let arm = &mut e.arms[first.branch_taken];
+
+                c = arm.body.apply_conditions(rest);
+                *self = arm.body.as_ref().clone();
 
                 c
             }

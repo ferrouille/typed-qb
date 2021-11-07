@@ -1,8 +1,8 @@
 //! `DELETE FROM` queries
-//! 
+//!
 //! ```rust
-//! # #![feature(generic_associated_types)] 
-//! # use typed_qb::__doctest::*; 
+//! # #![feature(generic_associated_types)]
+//! # use typed_qb::__doctest::*;
 //! # let mut conn = FakeConn;
 //! let results = conn.typed_exec(Users::delete(|user| expr!(user.id = 5).limit::<1>()))?;
 //! # Ok::<(), mysql::Error>(())
