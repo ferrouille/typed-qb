@@ -677,14 +677,9 @@ impl GroupedToRows for Undetermined {
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        expr::{CmpEq, ConstI64},
-        prelude::*,
-        typing::*,
-        QueryRoot, ToSql,
-    };
+    use crate::typing::*;
 
-    use super::FromRow;
+    // use super::FromRow;
 
     crate::table!(
         Foo "Foo" {
@@ -694,9 +689,9 @@ mod tests {
         }
     );
 
-    fn ground<T: QueryRoot + ToSql + FromRow>(t: T) -> T {
-        t
-    }
+    // fn ground<T: QueryRoot + ToSql + FromRow>(t: T) -> T {
+    //     t
+    // }
 
     #[test]
     pub fn test_select() {

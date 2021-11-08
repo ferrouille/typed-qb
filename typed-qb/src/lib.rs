@@ -87,9 +87,10 @@ use insert::{Insert, ValueList};
 pub use typed_qb_procmacro::*;
 
 use expr::Value;
-use qualifiers::AnyLimit;
+use qualifiers::{AllRows, AnyLimit};
 use select::{
-    BaseTable, InnerJoin, IntoPartialSelect, LeftJoin, PartialSelect, Select, SelectedData,
+    BaseTable, InnerJoin, IntoPartialSelect, LeftJoin, NilTable, PartialSelect, Select,
+    SelectedData,
 };
 use std::{fmt, marker::PhantomData};
 use typing::{BaseTy, IsGrouped, IsNullable, Ty, Ungrouped};
@@ -582,6 +583,44 @@ pub trait Table: Sized {
         query
             .into_partial_select()
             .map_from(|next| BaseTable::new(table, next))
+    }
+
+    /// Shorthand for `SELECT COUNT(*)`. Queries the number of rows matching the given qualifiers.
+    ///
+    /// ```rust
+    /// # #![feature(generic_associated_types)]
+    /// # use typed_qb::__doctest::*;
+    /// # let mut conn = FakeConn;
+    /// let results = conn.typed_query(Users::count(|user| expr!(user.id != 4).as_where()))?;
+    /// # Ok::<(), mysql::Error>(())
+    fn count<U: Up, L: AnyLimit, G: FnOnce(&Self::WithAlias<Alias<U>>) -> L>(
+        qualifiers: G,
+    ) -> Select<
+        functions::Count<expr::Star>,
+        L,
+        BaseTable<U, Alias<U>, <Self as Table>::WithAlias<Alias<U>>, NilTable>,
+    > {
+        Self::query(|t| {
+            select::select(crate::functions::COUNT(crate::expr::Star), |_| {
+                qualifiers(t)
+            })
+        })
+    }
+
+    /// Shorthand for `SELECT COUNT(*)` without qualifiers. Queries the number of rows in the table.
+    ///
+    /// ```rust
+    /// # #![feature(generic_associated_types)]
+    /// # use typed_qb::__doctest::*;
+    /// # let mut conn = FakeConn;
+    /// let results = conn.typed_query(Users::count_all())?;
+    /// # Ok::<(), mysql::Error>(())
+    fn count_all<U: Up>() -> Select<
+        functions::Count<expr::Star>,
+        AllRows,
+        BaseTable<U, Alias<U>, <Self as Table>::WithAlias<Alias<U>>, NilTable>,
+    > {
+        Self::count(|_| AllRows)
     }
 
     /// `LEFT JOIN` the table.
@@ -1395,8 +1434,21 @@ pub mod __doctest {
             <Q as select::SelectQuery>::Rows:
                 mysql::CollectResults<<Q::Columns as FromRow>::Queried, Self::Iter<'a, Q>>,
         {
-            // TODO: This will crash if we expect exactly one result
-            <Q as SelectQuery>::Rows::collect_results(Vec::new().into_iter())
+            // TODO: This will crash if we expect different/more values
+            <Q as SelectQuery>::Rows::collect_results(
+                vec![Ok(<Q::Columns as FromRow>::from_row(&[
+                    QueryValue::String("5".to_string()),
+                    QueryValue::String("5".to_string()),
+                    QueryValue::String("5".to_string()),
+                    QueryValue::String("5".to_string()),
+                    QueryValue::String("5".to_string()),
+                    QueryValue::String("5".to_string()),
+                    QueryValue::String("5".to_string()),
+                    QueryValue::String("5".to_string()),
+                    QueryValue::String("5".to_string()),
+                ]))]
+                .into_iter(),
+            )
         }
 
         fn typed_exec<'a, Q: QueryRoot>(&'a mut self, _query: Q) -> Result<(), ::mysql::Error> {

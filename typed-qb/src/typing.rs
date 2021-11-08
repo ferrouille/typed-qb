@@ -92,6 +92,8 @@ impl Signedness for Unsigned {
         match value {
             QueryValue::I64(v) => (*v).try_into().unwrap(),
             QueryValue::U64(v) => (*v).try_into().unwrap(),
+            QueryValue::String(v) => (*v).parse().unwrap(),
+            QueryValue::Bytes(v) => std::str::from_utf8(&v).unwrap().parse().unwrap(),
             _ => unreachable!(),
         }
     }
@@ -100,6 +102,8 @@ impl Signedness for Unsigned {
         match value {
             QueryValue::I64(v) => (*v).try_into().unwrap(),
             QueryValue::U64(v) => (*v).try_into().unwrap(),
+            QueryValue::String(v) => (*v).parse().unwrap(),
+            QueryValue::Bytes(v) => std::str::from_utf8(&v).unwrap().parse().unwrap(),
             _ => unreachable!(),
         }
     }
@@ -108,6 +112,8 @@ impl Signedness for Unsigned {
         match value {
             QueryValue::I64(v) => (*v).try_into().unwrap(),
             QueryValue::U64(v) => (*v).try_into().unwrap(),
+            QueryValue::String(v) => (*v).parse().unwrap(),
+            QueryValue::Bytes(v) => std::str::from_utf8(&v).unwrap().parse().unwrap(),
             _ => unreachable!(),
         }
     }
@@ -116,6 +122,8 @@ impl Signedness for Unsigned {
         match value {
             QueryValue::I64(v) => (*v).try_into().unwrap(),
             QueryValue::U64(v) => (*v).try_into().unwrap(),
+            QueryValue::String(v) => (*v).parse().unwrap(),
+            QueryValue::Bytes(v) => std::str::from_utf8(&v).unwrap().parse().unwrap(),
             _ => unreachable!(),
         }
     }
@@ -124,6 +132,8 @@ impl Signedness for Unsigned {
         match value {
             QueryValue::I64(v) => (*v).try_into().unwrap(),
             QueryValue::U64(v) => (*v).try_into().unwrap(),
+            QueryValue::String(v) => (*v).parse().unwrap(),
+            QueryValue::Bytes(v) => std::str::from_utf8(&v).unwrap().parse().unwrap(),
             _ => unreachable!(),
         }
     }
