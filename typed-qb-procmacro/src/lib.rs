@@ -1,5 +1,6 @@
 mod iflift;
 mod parsing;
+mod queryinto;
 
 use crate::iflift::{ConditionTree, IfLifting};
 use parsing::codegen::ToTokenStream;
@@ -7,7 +8,13 @@ use parsing::create::SqlStatements;
 use parsing::expr::Expr;
 use proc_macro2::TokenStream;
 use quote::ToTokens;
-use syn::{parse_macro_input, Block};
+use syn::{parse_macro_input, Block, DeriveInput};
+
+#[proc_macro_derive(QueryInto)]
+pub fn derive_field_names(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    queryinto::gen(&input).into()
+}
 
 /// Parses SQL syntax into a Value.
 /// ```rust,ignore

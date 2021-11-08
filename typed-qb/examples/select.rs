@@ -20,6 +20,22 @@ typed_qb::tables! {
     );
 }
 
+#[allow(dead_code)]
+#[derive(typed_qb::QueryInto, Debug)]
+struct User {
+    id: UserId,
+    name: String,
+}
+
+#[derive(Debug)]
+struct UserId(u32);
+
+impl From<u32> for UserId {
+    fn from(id: u32) -> Self {
+        UserId(id)
+    }
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::init();
 
@@ -55,6 +71,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // It's impossible to access a non-existant field here.
         println!("Item with id={}: {:?}", result.id, result);
     }
+
+    // You can also collect into existing structs
+    let users: Vec<User> = conn
+        .typed_query(Users::query(|user| {
+            data! { as User:
+                user.id,
+                user.name,
+            }
+        }))?
+        .to_vec()?;
+
+    println!("All users in a custom struct: {:?}", users);
+
+    let user_ids: Vec<UserId> = conn
+        .typed_query(Users::query(|user| data! { as UserId: user.id }))?
+        .to_vec()?;
+    println!("All user IDs in a custom struct: {:?}", user_ids);
 
     // Parameters can be specified with variables:
     let id = 2;

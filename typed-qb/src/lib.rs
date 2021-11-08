@@ -78,7 +78,7 @@ pub mod prelude {
         CreateOrderByEntry, GroupBySeq, OrderBySeq, Where,
     };
     pub use crate::select::select;
-    pub use crate::{data, expr, set, values, Table};
+    pub use crate::{data, expr, set, values, QueryInto, Table};
 }
 
 use delete::{Delete, DeleteQualifiers};
@@ -100,6 +100,7 @@ pub use __private::ConstSqlStr;
 #[doc(hidden)]
 pub mod __private {
     pub use concat_idents::concat_idents;
+    pub use std::fmt::Debug;
     pub use std::marker::PhantomData;
 
     const BUFFER_SIZE: usize = 8192;
@@ -496,7 +497,7 @@ pub trait FieldName {
 }
 
 #[derive(Debug)]
-pub struct Field<T: Ty, A: TableAlias, N: FieldName> {
+pub struct Field<T: Ty, A, N: FieldName> {
     _phantom: PhantomData<(T, A, N)>,
 }
 
@@ -504,8 +505,8 @@ impl<U: Up, T: Ty, A: TableAlias, N: FieldName> QueryTree<U> for Field<T, A, N> 
     type MaxUp = U;
 }
 
-impl<T: Ty, A: TableAlias, N: FieldName> Copy for Field<T, A, N> {}
-impl<T: Ty, A: TableAlias, N: FieldName> Clone for Field<T, A, N> {
+impl<T: Ty, A, N: FieldName> Copy for Field<T, A, N> {}
+impl<T: Ty, A, N: FieldName> Clone for Field<T, A, N> {
     fn clone(&self) -> Self {
         Self {
             _phantom: PhantomData,
@@ -848,18 +849,47 @@ macro_rules! count {
 /// ```
 ///
 /// [`SelectedData`] is automatically derived for the anonymous struct.
+/// You can also load the data into an existing struct:
+///
+/// ```rust
+/// # #![feature(generic_associated_types)]
+/// # use typed_qb::prelude::*;
+/// # #[derive(Default)]
+/// # struct Table { id: u32, name: String, }
+/// # let table = Table::default();
+///
+/// #[derive(QueryInto)]
+/// struct MyData {
+///     id: u32,
+///     name: String,
+/// }
+/// let data = data! { as MyData:
+///     table.id,
+///     table.name,
+/// };
+/// ```
+///
+/// If you are selecting multiple columns, you must derive [`QueryInto`] for the struct.
+/// The struct must contain all the fields that are being selected.
+/// An implementation `FieldType: From<SelectedType>` must exist.
+///
+/// If you are selecting a single column, you must implement `From<SelectedType>` for the struct.
+///
+/// You do not need to implement any other traits.
+/// Depending on the query, [`Database::typed_query`] will either return a `T`, `Option<T>` or an `Iterator<Item = T>` where `T` is the custom struct.
+///
 #[macro_export]
 macro_rules! data {
-    (impl QueryTree @ $($key:ident),*) => {
-        $crate::data!(impl QueryTree:Zip @ $($key),*; U, $(<$key>::MaxUp),* => );
+    (genquerytree @ $($key:ident),*) => {
+        $crate::data!(genquerytree:zip @ $($key),*; U, $(<$key>::MaxUp),* => );
     };
-    (impl QueryTree:Zip @ $firsta:ident $(, $($a:ident),*)?; $firstb:ty $(, $($b:ty),*)? => $($out:tt,)*) => {
-        $crate::data!(impl QueryTree:Zip @ $($($a),*)?; $($($b),*)? => $($out,)* [$firsta: $firstb],);
+    (genquerytree:zip @ $firsta:ident $(, $($a:ident),*)?; $firstb:ty $(, $($b:ty),*)? => $($out:tt,)*) => {
+        $crate::data!(genquerytree:zip @ $($($a),*)?; $($($b),*)? => $($out,)* [$firsta: $firstb],);
     };
-    (impl QueryTree:Zip @ ; $final:ty => $($out:tt,)*) => {
-        $crate::data!(impl QueryTree:Full @ $($out,)* => $final);
+    (genquerytree:zip @ ; $final:ty => $($out:tt,)*) => {
+        $crate::data!(genquerytree:full @ $($out,)* => $final);
     };
-    (impl QueryTree:Full @ $([ $key:ident : $constraint:ty ],)* => $final:ty) => {
+    (genquerytree:full @ $([ $key:ident : $constraint:ty ],)* => $final:ty) => {
         #[allow(non_camel_case_types)]
         impl<U: $crate::Up, $($key,)* M: $crate::typing::NullabilityModifier> $crate::QueryTree<U> for AnonymousData<$($key),*, M>
             where $($key : $crate::QueryTree<$constraint>,)* {
@@ -867,44 +897,38 @@ macro_rules! data {
         }
     };
 
-    (impl MainOutput @ $($key:ident : $value:expr),* $(,)*) => {
+    (genfieldtypes @ { } { $($key2:ident)* }) => {};
+    (genfieldtypes @ { $key:ident $($rest:ident)* } { $($key2:ident)* }) => {
+        #[allow(non_camel_case_types)]
+        impl<$($key2),*> $crate::FieldType<{ stringify!($key) }> for AnonymousDataQueried<$($key2),*> {
+            type Ty = $key;
+        }
+
+        $crate::data!(genfieldtypes @ { $($rest)* } { $($key2)* });
+    };
+
+    (output @ { } $($key:ident : $value:expr),* $(,)*) => {
         {
-            $(
-                $crate::__private::concat_idents!( fieldname = $key, FieldName {
-                    #[allow(non_camel_case_types)]
-                    struct fieldname;
-
-                    impl $crate::FieldName for fieldname {
-                        const NAME: &'static str = stringify!($key);
-                    }
-                });
-            )*
-
-            #[allow(non_camel_case_types)]
-            #[derive(Debug, Clone)]
-            struct AnonymousData<$($key),*, M: $crate::typing::NullabilityModifier> {
-                $($key: $key,)*
-                _phantom: $crate::__private::PhantomData<M>,
-            }
-
-            $crate::data!(impl QueryTree @ $($key),*);
-
-            #[allow(non_camel_case_types)]
-            struct AnonymousDataInst<$($key: $crate::Fieldable),*, A: $crate::TableAlias, M: $crate::typing::NullabilityModifier> {
-                $(pub $key: $crate::Field<<<$key as $crate::expr::Value>::Ty as $crate::typing::Ty>::ModifyNullability<M>, A, $crate::__private::concat_idents!( fieldname = $key, FieldName {
-                    fieldname
-                })>),*
-            }
-
             #[allow(non_camel_case_types)]
             #[derive(Clone)]
-            struct AnonymousDataQueried<$($key: $crate::Fieldable),*> {
-                $(pub $key: $key::Repr),*
+            struct AnonymousDataQueried<$($key),*> {
+                $(pub $key: $key),*
+            }
+
+            $crate::data!(genfieldtypes @ { $($key)* } { $($key)* });
+
+            #[allow(non_camel_case_types)]
+            impl<$($key),*> AnonymousDataQueried<$($key),*> {
+                fn __create_from_row<D: $($crate::WithField<{ stringify!($key) }, Output = $key> + )*>(data: D) -> Self {
+                    Self {
+                        $($key: <D as $crate::WithField<{ stringify!($key) }>>::value(&data),)*
+                    }
+                }
             }
 
             #[allow(non_camel_case_types)]
-            impl<$($key: $crate::Fieldable),*> ::std::fmt::Debug for AnonymousDataQueried<$($key),*>
-                where $($key::Repr: ::std::fmt::Debug),* {
+            impl<$($key),*> $crate::__private::Debug for AnonymousDataQueried<$($key),*>
+                where $($key: $crate::__private::Debug),* {
                 fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> std::fmt::Result {
                     f.debug_struct("$")
                         $(.field(stringify!($key), &self.$key))*
@@ -912,84 +936,188 @@ macro_rules! data {
                 }
             }
 
-            $crate::_internal_impl_selected_data!($($key,)*);
-            $crate::_internal_select_derive_to_sql!($($key: $value),*);
+            let result;
+            $crate::data!(finaloutput in result @ { default AnonymousDataQueried::<$($key::Repr),*> } $($key: $value,)*);
 
-            #[allow(non_camel_case_types)]
-            fn cast<$($key),*>(o: AnonymousData<$($key),*, $crate::typing::KeepOriginalNullability>) -> AnonymousData<$($key),*, $crate::typing::KeepOriginalNullability> {
-                o
-            }
-
-            cast(AnonymousData {
-                $($key: $value,)*
-                _phantom: $crate::__private::PhantomData,
-            })
+            result
         }
     };
 
-    (impl Preprocess @ { $(,)* } => { $($key:ident: $value:expr,)* }) => {
-        $crate::data! { impl MainOutput @ $($key : $value),* }
+    (output @ { $ty:ty } $($key:ident : $value:expr),* $(,)*) => {
+        {
+            let result;
+            $crate::data!(finaloutput in result @ { custom $ty } $($key: $value,)*);
+
+            result
+        }
     };
-    (impl Preprocess @ { $(,)* } => { $($rest:tt)* }) => {
-        $crate::data!(impl Preprocess @ { => $crate::qualifiers::AllRows } => { $($rest)* })
+
+    (fromrow @ custom { $ty:ty } { $key:ident } { $intermediate:ty }) => {
+        #[allow(non_camel_case_types)]
+        impl<$key: $crate::Fieldable, M: $crate::typing::NullabilityModifier> $crate::select::FromRow for AnonymousData<$key, M>
+            where Self: $crate::select::SelectedData,
+                $ty: From<$key::Repr> {
+            type Queried = $ty;
+            fn from_row(columns: &[$crate::QueryValue]) -> Self::Queried {
+                $key::from_query_value(&columns[0]).into()
+            }
+        }
+    };
+
+    (fromrow @ custom { $ty:ty } { $($key:ident),* } { $intermediate:ty }) => {
+        #[allow(non_camel_case_types)]
+        impl<$($key: $crate::Fieldable),*, M: $crate::typing::NullabilityModifier> $crate::select::FromRow for AnonymousData<$($key),*, M>
+            where Self: $crate::select::SelectedData,
+                $(<$ty as $crate::FieldType<{ stringify!($key) }>>::Ty: From<$key::Repr>,)*
+                {
+            type Queried = $ty;
+            #[allow(unused_assignments)]
+            fn from_row<'a>(columns: &'a [$crate::QueryValue]) -> Self::Queried {
+                <$ty>::__create_from_row(Intermediate::<'a, $($key,)*>(columns, $crate::__private::PhantomData))
+            }
+        }
+
+        #[allow(non_camel_case_types)]
+        impl<$($key: $crate::Fieldable),*, M: $crate::typing::NullabilityModifier> $crate::select::IntoPartialSelect<AnonymousData<$($key),*, M>, AllRows> for AnonymousData<$($key),*, M>
+            where Self: $crate::select::SelectedData, {
+            type Output = $crate::select::SelectWithoutFrom<Self, AllRows>;
+
+            fn into_partial_select(self) -> Self::Output {
+                select(self, |_| AllRows)
+            }
+        }
+    };
+
+    (fromrow @ default { $ty:ty } { $key:ident } { $intermediate:ty }) => {
+        #[allow(non_camel_case_types)]
+        impl<$key: $crate::Fieldable, M: $crate::typing::NullabilityModifier> $crate::select::FromRow for AnonymousData<$key, M>
+            where Self: $crate::select::SelectedData {
+            type Queried = $key::Repr;
+            fn from_row(columns: &[$crate::QueryValue]) -> Self::Queried {
+                $key::from_query_value(&columns[0])
+            }
+        }
+    };
+
+    (fromrow @ default { $ty:ty } { $($key:ident),* } { $intermediate:ty }) => {
+        #[allow(non_camel_case_types)]
+        impl<$($key: $crate::Fieldable),*, M: $crate::typing::NullabilityModifier> $crate::select::FromRow for AnonymousData<$($key),*, M>
+            where Self: $crate::select::SelectedData,
+                $(for<'a> $intermediate: $crate::WithField<{ stringify!($key) }, Output = $key::Repr>,)*
+                {
+            type Queried = $ty;
+            #[allow(unused_assignments)]
+            fn from_row<'a>(columns: &'a [$crate::QueryValue]) -> Self::Queried {
+                <$ty>::__create_from_row(Intermediate::<'a, $($key,)*>(columns, $crate::__private::PhantomData))
+            }
+        }
+
+        #[allow(non_camel_case_types)]
+        impl<$($key: $crate::Fieldable),*, M: $crate::typing::NullabilityModifier> $crate::select::IntoPartialSelect<AnonymousData<$($key),*, M>, AllRows> for AnonymousData<$($key),*, M>
+            where Self: $crate::select::SelectedData, {
+            type Output = $crate::select::SelectWithoutFrom<Self, AllRows>;
+
+            fn into_partial_select(self) -> Self::Output {
+                select(self, |_| AllRows)
+            }
+        }
+    };
+
+    (finaloutput in $result:ident @ { $tykind:ident $ty:ty } $($key:ident : $value:expr,)*) => {
+        $(
+            $crate::__private::concat_idents!( fieldname = $key, FieldName {
+                #[allow(non_camel_case_types)]
+                struct fieldname;
+
+                impl $crate::FieldName for fieldname {
+                    const NAME: &'static str = stringify!($key);
+                }
+            });
+        )*
+
+        #[allow(non_camel_case_types)]
+        #[derive(Debug, Clone)]
+        struct AnonymousData<$($key),*, M: $crate::typing::NullabilityModifier> {
+            $($key: $key,)*
+            _phantom: $crate::__private::PhantomData<M>,
+        }
+
+        #[allow(non_camel_case_types)]
+        struct AnonymousDataInst<$($key: $crate::Fieldable),*, A: $crate::TableAlias, M: $crate::typing::NullabilityModifier> {
+            $(pub $key: $crate::Field<<<$key as $crate::expr::Value>::Ty as $crate::typing::Ty>::ModifyNullability<M>, A, $crate::__private::concat_idents!( fieldname = $key, FieldName {
+                fieldname
+            })>),*
+        }
+
+        $crate::data!(genquerytree @ $($key),*);
+
+        $crate::_internal_impl_selected_data!({ $ty } $($key,)*);
+        $crate::_internal_select_derive_to_sql!($($key: $value),*);
+
+        $crate::data!(fromrow @ $tykind { $ty } { $($key),* } { Intermediate::<'a, $($key),*> });
+
+        #[allow(non_camel_case_types)]
+        fn cast<$($key),*>(o: AnonymousData<$($key),*, $crate::typing::KeepOriginalNullability>) -> AnonymousData<$($key),*, $crate::typing::KeepOriginalNullability> {
+            o
+        }
+
+        $result = cast(AnonymousData {
+            $($key: $value,)*
+            _phantom: $crate::__private::PhantomData,
+        });
+    };
+
+    (preprocess @ { $($ty:tt)* } { $(,)* } => { $($key:ident: $value:expr,)* }) => {
+        $crate::data! { output @ { $($ty)* } $($key : $value),* }
+    };
+    (preprocess @ { $($ty:tt)* } { $(,)* } => { $($rest:tt)* }) => {
+        $crate::data!(preprocess @ { $($ty)* } { => $crate::qualifiers::AllRows } => { $($rest)* })
     };
 
     // expressions surrounded by [] are interpreted via expr!()
-    (impl Preprocess @ { $(,)* $key:ident: [$($tt:tt)*]$(, $($rest:tt)*)? } => { $($unfolded:tt)* }) => {
-        $crate::data!(impl Preprocess @ { $($($rest)*)? } => { $($unfolded)* $key: $crate::expr!($($tt)*), })
+    (preprocess @ { $($ty:tt)* } { $(,)* $key:ident: [$($tt:tt)*]$(, $($rest:tt)*)? } => { $($unfolded:tt)* }) => {
+        $crate::data!(preprocess @ { $($ty)* } { $($($rest)*)? } => { $($unfolded)* $key: $crate::expr!($($tt)*), })
     };
 
     // The following cases are "key: expr" followed by ", $rest" or "", since there is no or operator in macro_rules!
-    (impl Preprocess @ { $(,)* $key:ident: $value:expr$(, $($rest:tt)*)? } => { $($unfolded:tt)* }) => {
-        $crate::data!(impl Preprocess @ { $($($rest)*)? } => { $($unfolded)* $key: $value, })
+    (preprocess @ { $($ty:tt)* } { $(,)* $key:ident: $value:expr$(, $($rest:tt)*)? } => { $($unfolded:tt)* }) => {
+        $crate::data!(preprocess @ { $($ty)* } { $($($rest)*)? } => { $($unfolded)* $key: $value, })
     };
     // shorthand 'a.b' expands to 'b: a.b'
-    (impl Preprocess @ { $(,)* $a:ident.$b:ident $($rest:tt)* } => { $($unfolded:tt)* }) => {
-        $crate::data!(impl Preprocess @ { $($rest)* } => { $($unfolded)* $b: $a.$b, })
+    (preprocess @ { $($ty:tt)* } { $(,)* $a:ident.$b:ident $($rest:tt)* } => { $($unfolded:tt)* }) => {
+        $crate::data!(preprocess @ { $($ty)* } { $($rest)* } => { $($unfolded)* $b: $a.$b, })
     };
 
     // a single [...] expands to _value: expr!(...)
-    (impl Preprocess @ { $(,)* [$($tt:tt)*] } => { $($unfolded:tt)* }) => {
-        $crate::data!(impl Preprocess @ { } => { $($unfolded)* _value: $crate::expr!($($tt)*), })
+    (preprocess @ { $($ty:tt)* } { $(,)* [$($tt:tt)*] } => { $($unfolded:tt)* }) => {
+        $crate::data!(preprocess @ { $($ty)* } { } => { $($unfolded)* _value: $crate::expr!($($tt)*), })
     };
     // just a single expression $e expands to '_value: $e'
-    (impl Preprocess @ { $(,)* $e:expr } => { $($unfolded:tt)* }) => {
-        $crate::data!(impl Preprocess @ { } => { $($unfolded)* _value: $e, })
+    (preprocess @ { $($ty:tt)* } { $(,)* $e:expr } => { $($unfolded:tt)* }) => {
+        $crate::data!(preprocess @ { $($ty)* } { } => { $($unfolded)* _value: $e, })
     };
 
-    (impl Preprocess @ $($any:tt)*) => {
+    (preprocess @ $($any:tt)*) => {
         compile_error!(concat!("unfolding of data! is missing a rule for ", stringify!($($any)*)))
     };
 
     // Entry point
-    ($($rest:tt)*) => {
-        $crate::data!{ impl Preprocess @ { $($rest)* } => { } }
+    ( as $ty:ty: $($rest:tt)*) => {
+        $crate::data!{ preprocess @ { $ty } { $($rest)* } => { } }
     };
-}
-
-struct X {
-    a: String,
-    b: u64,
-}
-
-impl std::fmt::Debug for X {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("X")
-            .field("a", &self.a)
-            .field("b", &self.b)
-            .finish()
-    }
+    ($($rest:tt)*) => {
+        $crate::data!{ preprocess @ { } { $($rest)* } => { } }
+    };
 }
 
 #[macro_export]
 #[doc(hidden)]
 macro_rules! _internal_impl_selected_data {
-    ($key:ident,) => {
+    ({ $ty:ty } $key:ident,) => {
         #[allow(non_camel_case_types)]
         impl<$key: $crate::Fieldable, M: $crate::typing::NullabilityModifier> $crate::select::SelectedData for AnonymousData<$key, M>
             where <$key as $crate::Fieldable>::Grouped: $crate::select::GroupedToRows, {
             type Instantiated<A: $crate::TableAlias> = AnonymousDataInst<$key, A, M>;
-            type Queried = $key::Repr;
             type Repr = ();
             type Rows = <<$key as $crate::Fieldable>::Grouped as $crate::select::GroupedToRows>::Output;
             type AllNullable = AnonymousData<$key, $crate::typing::AllNullable>;
@@ -1007,10 +1135,6 @@ macro_rules! _internal_impl_selected_data {
                     $key: self.$key,
                     _phantom: $crate::__private::PhantomData,
                 }
-            }
-
-            fn from_row(columns: &[$crate::QueryValue]) -> Self::Queried {
-                $key::from_query_value(&columns[0])
             }
         }
 
@@ -1030,27 +1154,38 @@ macro_rules! _internal_impl_selected_data {
             }
         }
     };
-    (@wheregen { } { $last:ty } { $($backup:ident,)* } => { $($output:tt)* }) => {
-        $crate::_internal_impl_selected_data!(@output { $($backup,)* } { $($output)* } { $last });
+    (@wheregen { $ty:ty } { } { $last:ty } { $($backup:ident,)* } => { $($output:tt)* }) => {
+        $crate::_internal_impl_selected_data!(@output { $ty } { $($backup,)* } { $($output)* } { $last });
     };
-    (@wheregen { $firstkey:ident, $($key:ident,)* } { $last:ty } { $($backup:ident,)* } => { $($output:tt)* }) => {
-        $crate::_internal_impl_selected_data!(@wheregen
+    (@wheregen { $ty:ty } { $firstkey:ident, $($key:ident,)* } { $last:ty } { $($backup:ident,)* } => { $($output:tt)* }) => {
+        $crate::_internal_impl_selected_data!(@wheregen { $ty }
             { $($key,)* }
             { <($last, <$firstkey as $crate::Fieldable>::Grouped) as $crate::typing::CombineGrouping>::Result }
             { $($backup,)* }
             => { $($output)* ($last, <$firstkey as $crate::Fieldable>::Grouped): $crate::typing::CombineGrouping, }
         );
     };
-    ($firstkey:ident, $($key:ident,)*) => {
-        $crate::_internal_impl_selected_data!(@wheregen { $($key,)* } { <$firstkey as $crate::Fieldable>::Grouped } { $firstkey, $($key,)* } => {});
+    ( { $ty:ty } $firstkey:ident, $($key:ident,)*) => {
+        $crate::_internal_impl_selected_data!(@wheregen { $ty } { $($key,)* } { <$firstkey as $crate::Fieldable>::Grouped } { $firstkey, $($key,)* } => {});
     };
-    (@output { $($key:ident,)* } { $($constraint:tt)* } { $finalgrouping:ty }) => {
+    (@withfields { $index:expr } { } { $($key2:ident)* }) => {};
+    (@withfields { $index:expr } { $key:ident $($rest:ident)* } { $($key2:ident)* }) => {
+        #[allow(non_camel_case_types)]
+        impl<$($key2: $crate::Fieldable,)*> $crate::WithField<{ stringify!($key) }> for Intermediate<'_, $($key2,)*> {
+            type Output = $key::Repr;
+            fn value(&self) -> Self::Output {
+                $key::from_query_value(&self.0[$index])
+            }
+        }
+
+        $crate::_internal_impl_selected_data!(@withfields { $index + 1 } { $($rest)* } { $($key2)* });
+    };
+    (@output { $ty:ty } { $($key:ident,)* } { $($constraint:tt)* } { $finalgrouping:ty }) => {
         #[allow(non_camel_case_types)]
         impl<$($key: $crate::Fieldable),*, M: $crate::typing::NullabilityModifier> $crate::select::SelectedData for AnonymousData<$($key),*, M>
             where $($constraint)*
                 $finalgrouping: $crate::select::GroupedToRows {
-            type Instantiated<A: $crate::TableAlias> = AnonymousDataInst<$($key),*, A, $crate::typing::KeepOriginalNullability>;
-            type Queried = AnonymousDataQueried<$($key),*>;
+            type Instantiated<A: $crate::TableAlias> = AnonymousDataInst<$($key),*, A, M>;
             type Repr = ();
             type AllNullable = AnonymousData<$($key),*, $crate::typing::AllNullable>;
 
@@ -1070,30 +1205,12 @@ macro_rules! _internal_impl_selected_data {
                     _phantom: $crate::__private::PhantomData,
                 }
             }
-
-            #[allow(unused_assignments)]
-            fn from_row(columns: &[$crate::QueryValue]) -> Self::Queried {
-                let mut c = columns;
-                AnonymousDataQueried {
-                    $($key: {
-                        let (val, rest) = c.split_first().unwrap();
-                        c = rest;
-                        $key::from_query_value(val)
-                    }),*
-                }
-            }
         }
 
         #[allow(non_camel_case_types)]
-        impl<$($key: $crate::Fieldable),*, M: $crate::typing::NullabilityModifier> $crate::select::IntoPartialSelect<AnonymousData<$($key),*, M>, AllRows> for AnonymousData<$($key),*, M>
-            where $($constraint)*
-                $finalgrouping: $crate::select::GroupedToRows {
-            type Output = $crate::select::SelectWithoutFrom<Self, AllRows>;
+        struct Intermediate<'a, $($key, )*>(&'a [$crate::QueryValue], $crate::__private::PhantomData<($($key),*)>);
 
-            fn into_partial_select(self) -> Self::Output {
-                select(self, |_| AllRows)
-            }
-        }
+        $crate::_internal_impl_selected_data!(@withfields { 0 } { $($key)* }  { $($key)* });
     };
 }
 
@@ -1145,7 +1262,7 @@ macro_rules! table {
                 )*
 
                 #[derive(Clone)]
-                pub struct $name<A: $crate::TableAlias, N: $crate::typing::NullabilityModifier> {
+                pub struct $name<A, N: $crate::typing::NullabilityModifier> {
                     $(
                         pub $field: $crate::Field<<$ty as $crate::typing::Ty>::ModifyNullability<N>, A, $field>,
                     )*
@@ -1207,6 +1324,15 @@ macro_rules! table {
     }
 }
 
+pub trait FieldType<const NAME: &'static str> {
+    type Ty;
+}
+
+pub trait WithField<const NAME: &'static str> {
+    type Output;
+    fn value(&self) -> Self::Output;
+}
+
 // TODO: @variable:=
 // TODO: FROM tableA, tableB (without join)
 
@@ -1225,7 +1351,7 @@ pub trait ToSql {
 pub mod __doctest {
     use crate::mysql::CollectResults;
     pub use crate::prelude::*;
-    use crate::select::SelectQuery;
+    use crate::select::{FromRow, SelectQuery};
     use crate::typing::*;
     use crate::*;
 
@@ -1247,8 +1373,11 @@ pub mod __doctest {
     pub struct FakeConn;
 
     impl Database for FakeConn {
-        type Iter<'a, Q: select::SelectQuery> = std::vec::IntoIter<
-            Result<<<Q as SelectQuery>::Columns as select::SelectedData>::Queried, ::mysql::Error>,
+        type Iter<'a, Q: select::SelectQuery>
+        where
+            <Q as SelectQuery>::Columns: FromRow,
+        = std::vec::IntoIter<
+            Result<<<Q as SelectQuery>::Columns as FromRow>::Queried, ::mysql::Error>,
         >;
 
         fn typed_query<'a, Q: select::SelectQuery + QueryRoot>(
@@ -1256,14 +1385,15 @@ pub mod __doctest {
             _query: Q,
         ) -> Result<
             <<Q as select::SelectQuery>::Rows as mysql::CollectResults<
-                <Q::Columns as SelectedData>::Queried,
+                <Q::Columns as FromRow>::Queried,
                 Self::Iter<'a, Q>,
             >>::PartialOutput,
             ::mysql::Error,
         >
         where
+            Q::Columns: FromRow,
             <Q as select::SelectQuery>::Rows:
-                mysql::CollectResults<<Q::Columns as SelectedData>::Queried, Self::Iter<'a, Q>>,
+                mysql::CollectResults<<Q::Columns as FromRow>::Queried, Self::Iter<'a, Q>>,
         {
             // TODO: This will crash if we expect exactly one result
             <Q as SelectQuery>::Rows::collect_results(Vec::new().into_iter())

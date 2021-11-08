@@ -1,5 +1,5 @@
 use crate::{
-    select::{ExactlyOne, RowKind, SelectQuery, SelectedData, ZeroOrMore, ZeroOrOne},
+    select::{ExactlyOne, FromRow, RowKind, SelectQuery, SelectedData, ZeroOrMore, ZeroOrOne},
     QueryRoot, QueryValue,
 };
 use log::{debug, trace};
@@ -49,22 +49,26 @@ impl<T, I: Iterator<Item = Result<T, mysql::Error>>> CollectResults<T, I> for Ze
 
 pub trait Database {
     type Iter<'a, Q: SelectQuery>: Iterator<
-        Item = Result<<Q::Columns as SelectedData>::Queried, mysql::Error>,
-    >;
+        Item = Result<<Q::Columns as FromRow>::Queried, mysql::Error>,
+    >
+    where
+        Self: 'a,
+        Q::Columns: FromRow;
 
     fn typed_query<'a, Q: SelectQuery + QueryRoot>(
         &'a mut self,
         query: Q,
     ) -> Result<
         <<Q as SelectQuery>::Rows as CollectResults<
-            <Q::Columns as SelectedData>::Queried,
+            <Q::Columns as FromRow>::Queried,
             Self::Iter<'a, Q>,
         >>::PartialOutput,
         mysql::Error,
     >
     where
+        Q::Columns: FromRow,
         <Q as SelectQuery>::Rows:
-            CollectResults<<Q::Columns as SelectedData>::Queried, Self::Iter<'a, Q>>;
+            CollectResults<<Q::Columns as FromRow>::Queried, Self::Iter<'a, Q>>;
 
     fn typed_exec<'a, Q: QueryRoot>(&'a mut self, query: Q) -> Result<(), mysql::Error>;
 }
@@ -74,8 +78,11 @@ pub struct ResultIter<'c, 't, 'tc, Q> {
     _phantom: PhantomData<Q>,
 }
 
-impl<'c, 't, 'tc, Q: SelectQuery> Iterator for ResultIter<'c, 't, 'tc, Q> {
-    type Item = Result<<Q::Columns as SelectedData>::Queried, mysql::Error>;
+impl<'c, 't, 'tc, Q: SelectQuery> Iterator for ResultIter<'c, 't, 'tc, Q>
+where
+    Q::Columns: FromRow,
+{
+    type Item = Result<<Q::Columns as FromRow>::Queried, mysql::Error>;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.iter.next().map(|result| {
@@ -117,14 +124,17 @@ impl<'c, 't, 'tc, Q: SelectQuery> Iterator for ResultIter<'c, 't, 'tc, Q> {
 
                 trace!("Loaded row: {:?}", data);
 
-                <Q::Columns as SelectedData>::from_row(&data)
+                <Q::Columns as FromRow>::from_row(&data)
             })
         })
     }
 }
 
-impl<'c, 't, 'tc, Q: SelectQuery> ResultIter<'c, 't, 'tc, Q> {
-    pub fn to_vec(self) -> Result<Vec<<Q::Columns as SelectedData>::Queried>, mysql::Error> {
+impl<'c, 't, 'tc, Q: SelectQuery> ResultIter<'c, 't, 'tc, Q>
+where
+    Q::Columns: FromRow,
+{
+    pub fn to_vec(self) -> Result<Vec<<Q::Columns as FromRow>::Queried>, mysql::Error> {
         self.collect()
     }
 }
@@ -197,22 +207,29 @@ fn into_params(values: Vec<QueryValue>) -> Vec<Value> {
         .collect()
 }
 
-impl<X: Queryable> Database for X {
-    type Iter<'a, Q: SelectQuery> = ResultIter<'a, 'a, 'a, Q>;
+impl<X: Queryable> Database for X
+where
+    X: 'static,
+{
+    type Iter<'a, Q: SelectQuery>
+    where
+        Q::Columns: FromRow,
+    = ResultIter<'a, 'a, 'a, Q>;
 
     fn typed_query<'a, Q: SelectQuery + QueryRoot>(
         &'a mut self,
         query: Q,
     ) -> Result<
         <<Q as SelectQuery>::Rows as CollectResults<
-            <Q::Columns as SelectedData>::Queried,
+            <Q::Columns as FromRow>::Queried,
             Self::Iter<'a, Q>,
         >>::PartialOutput,
         mysql::Error,
     >
     where
+        Q::Columns: FromRow,
         <Q as SelectQuery>::Rows:
-            CollectResults<<Q::Columns as SelectedData>::Queried, Self::Iter<'a, Q>>,
+            CollectResults<<Q::Columns as FromRow>::Queried, Self::Iter<'a, Q>>,
     {
         let sql = Q::SQL_STR;
         debug!("Running query: {}", Q::SQL_STR);
