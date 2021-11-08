@@ -1,6 +1,6 @@
 [package]
 name = "typed-qb-procmacro"
-version = "0.1.1"
+version = "0.2.0"
 authors = ["ferrouille <git@ferrouille.nl>"]
 edition = "2021"
 license = "MPL-2.0"
