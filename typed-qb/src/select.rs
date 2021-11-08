@@ -120,7 +120,7 @@ pub trait PartialSelect<D: SelectedData, L: AnyLimit> {
 /// You should **not** implement this trait.
 /// Instead, use the [`data!`] macro.
 pub trait SelectedData: Sized {
-    type Instantiated<A: TableAlias>;
+    type Instantiated<A>;
     type Repr;
     type Rows: RowKind;
     type AllNullable: SelectedData;
@@ -412,7 +412,7 @@ impl<T: Fieldable, M: NullabilityModifier> SelectedData for SingleColumn<T, M>
 where
     <T as Fieldable>::Grouped: GroupedToRows,
 {
-    type Instantiated<A: TableAlias> =
+    type Instantiated<A> =
         Field<<<T as Value>::Ty as Ty>::ModifyNullability<M>, A, SingleColumnFieldName>;
     type Repr = ();
     type Rows = <<T as Fieldable>::Grouped as GroupedToRows>::Output;
@@ -477,7 +477,7 @@ impl<V: Value + Fieldable> SelectedData for V
 where
     <V as Fieldable>::Grouped: GroupedToRows,
 {
-    type Instantiated<A: TableAlias> = Field<V::Ty, A, SingleColumnFieldName>;
+    type Instantiated<A> = Field<V::Ty, A, SingleColumnFieldName>;
     type Repr = ();
     type Rows = <<V as Fieldable>::Grouped as GroupedToRows>::Output;
     type AllNullable = SingleColumn<V, AllNullable>;

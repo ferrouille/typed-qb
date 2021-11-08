@@ -501,7 +501,7 @@ pub struct Field<T: Ty, A, N: FieldName> {
     _phantom: PhantomData<(T, A, N)>,
 }
 
-impl<U: Up, T: Ty, A: TableAlias, N: FieldName> QueryTree<U> for Field<T, A, N> {
+impl<U: Up, T: Ty, A, N: FieldName> QueryTree<U> for Field<T, A, N> {
     type MaxUp = U;
 }
 
@@ -708,7 +708,7 @@ pub trait Table: Sized {
     }
 }
 
-impl<T: Ty, A: TableAlias, N: FieldName> Value for Field<T, A, N> {
+impl<T: Ty, A, N: FieldName> Value for Field<T, A, N> {
     type Ty = T;
     type Grouped = Ungrouped;
 }
@@ -1043,7 +1043,7 @@ macro_rules! data {
         }
 
         #[allow(non_camel_case_types)]
-        struct AnonymousDataInst<$($key: $crate::Fieldable),*, A: $crate::TableAlias, M: $crate::typing::NullabilityModifier> {
+        struct AnonymousDataInst<$($key: $crate::Fieldable),*, A, M: $crate::typing::NullabilityModifier> {
             $(pub $key: $crate::Field<<<$key as $crate::expr::Value>::Ty as $crate::typing::Ty>::ModifyNullability<M>, A, $crate::__private::concat_idents!( fieldname = $key, FieldName {
                 fieldname
             })>),*
@@ -1117,7 +1117,7 @@ macro_rules! _internal_impl_selected_data {
         #[allow(non_camel_case_types)]
         impl<$key: $crate::Fieldable, M: $crate::typing::NullabilityModifier> $crate::select::SelectedData for AnonymousData<$key, M>
             where <$key as $crate::Fieldable>::Grouped: $crate::select::GroupedToRows, {
-            type Instantiated<A: $crate::TableAlias> = AnonymousDataInst<$key, A, M>;
+            type Instantiated<A> = AnonymousDataInst<$key, A, M>;
             type Repr = ();
             type Rows = <<$key as $crate::Fieldable>::Grouped as $crate::select::GroupedToRows>::Output;
             type AllNullable = AnonymousData<$key, $crate::typing::AllNullable>;
@@ -1185,7 +1185,7 @@ macro_rules! _internal_impl_selected_data {
         impl<$($key: $crate::Fieldable),*, M: $crate::typing::NullabilityModifier> $crate::select::SelectedData for AnonymousData<$($key),*, M>
             where $($constraint)*
                 $finalgrouping: $crate::select::GroupedToRows {
-            type Instantiated<A: $crate::TableAlias> = AnonymousDataInst<$($key),*, A, M>;
+            type Instantiated<A> = AnonymousDataInst<$($key),*, A, M>;
             type Repr = ();
             type AllNullable = AnonymousData<$($key),*, $crate::typing::AllNullable>;
 
