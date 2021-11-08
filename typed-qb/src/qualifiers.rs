@@ -38,25 +38,25 @@ where
         self.as_where().limit::<N>()
     }
 
-    fn limit_offset<const N: usize, const OFFSET: usize>(
+    fn offset_limit<const OFFSET: usize, const N: usize>(
         self,
-    ) -> Limit<Where<Self>, ConstLimitAndOffset<N, OFFSET>>
+    ) -> Limit<Where<Self>, ConstOffsetAndLimit<OFFSET, N>>
     where
-        ConstLimitAndOffset<N, OFFSET>: ModifyRows,
+        ConstOffsetAndLimit<OFFSET, N>: ModifyRows,
     {
-        self.as_where().limit_offset::<N, OFFSET>()
+        self.as_where().offset_limit::<OFFSET, N>()
     }
 
     fn limit_param(self, row_count: usize) -> Limit<Where<Self>, ParameterLimit> {
         self.as_where().limit_param(row_count)
     }
 
-    fn limit_offset_params(
+    fn offset_limit_params(
         self,
-        row_count: usize,
         offset: usize,
-    ) -> Limit<Where<Self>, ParameterLimitAndOffset> {
-        self.as_where().limit_offset_params(row_count, offset)
+        row_count: usize,
+    ) -> Limit<Where<Self>, ParameterOffsetAndLimit> {
+        self.as_where().offset_limit_params(offset, row_count)
     }
 }
 
@@ -192,15 +192,15 @@ pub trait AnyOrderedBy: ModifyRows + Sized {
         }
     }
 
-    fn limit_offset<const N: usize, const OFFSET: usize>(
+    fn offset_limit<const OFFSET: usize, const N: usize>(
         self,
-    ) -> Limit<Self, ConstLimitAndOffset<N, OFFSET>>
+    ) -> Limit<Self, ConstOffsetAndLimit<OFFSET, N>>
     where
-        ConstLimitAndOffset<N, OFFSET>: ModifyRows,
+        ConstOffsetAndLimit<OFFSET, N>: ModifyRows,
     {
         Limit {
             inner: self,
-            value: ConstLimitAndOffset,
+            value: ConstOffsetAndLimit,
         }
     }
 
@@ -211,14 +211,14 @@ pub trait AnyOrderedBy: ModifyRows + Sized {
         }
     }
 
-    fn limit_offset_params(
+    fn offset_limit_params(
         self,
-        row_count: usize,
         offset: usize,
-    ) -> Limit<Self, ParameterLimitAndOffset> {
+        row_count: usize,
+    ) -> Limit<Self, ParameterOffsetAndLimit> {
         Limit {
             inner: self,
-            value: ParameterLimitAndOffset(Parameter(row_count), Parameter(offset)),
+            value: ParameterOffsetAndLimit(Parameter(offset), Parameter(row_count)),
         }
     }
 }
@@ -328,23 +328,23 @@ pub trait AnyLimit: ModifyRows {}
 pub trait LimitValue: ToSql + ModifyRows {}
 
 pub struct ConstLimit<const N: usize>;
-pub struct ConstLimitAndOffset<const N: usize, const OFFSET: usize>;
-pub struct ParameterLimitAndOffset(Parameter<usize>, Parameter<usize>);
+pub struct ConstOffsetAndLimit<const OFFSET: usize, const N: usize>;
+pub struct ParameterOffsetAndLimit(Parameter<usize>, Parameter<usize>);
 pub struct ParameterLimit(Parameter<usize>);
 
 impl<const N: usize> LimitValue for ConstLimit<N> where Self: ModifyRows {}
-impl<const N: usize, const OFFSET: usize> LimitValue for ConstLimitAndOffset<N, OFFSET> where
+impl<const OFFSET: usize, const N: usize> LimitValue for ConstOffsetAndLimit<OFFSET, N> where
     Self: ModifyRows
 {
 }
-impl LimitValue for ParameterLimitAndOffset {}
+impl LimitValue for ParameterOffsetAndLimit {}
 impl LimitValue for ParameterLimit {}
 
 impl ModifyRows for ConstLimit<1> {
     type Rows<R: RowKind> = ZeroOrOne;
 }
 
-impl<const OFFSET: usize> ModifyRows for ConstLimitAndOffset<1, OFFSET> {
+impl<const OFFSET: usize> ModifyRows for ConstOffsetAndLimit<OFFSET, 1> {
     type Rows<R: RowKind> = ZeroOrOne;
 }
 
@@ -355,7 +355,7 @@ where
     type Rows<R: RowKind> = R;
 }
 
-impl<const N: usize, const OFFSET: usize> ModifyRows for ConstLimitAndOffset<N, OFFSET>
+impl<const OFFSET: usize, const N: usize> ModifyRows for ConstOffsetAndLimit<OFFSET, N>
 where
     ConstCheck<{ N >= 2 }>: True,
 {
@@ -367,7 +367,7 @@ pub struct ConstCheck<const CHECK: bool>;
 pub trait True {}
 impl True for ConstCheck<true> {}
 
-impl ModifyRows for ParameterLimitAndOffset {
+impl ModifyRows for ParameterOffsetAndLimit {
     type Rows<R: RowKind> = R;
 }
 
@@ -385,20 +385,20 @@ impl<U: Up, const N: usize> QueryTree<U> for ConstLimit<N> {
     type MaxUp = U;
 }
 
-impl<const N: usize, const OFFSET: usize> ToSql for ConstLimitAndOffset<N, OFFSET> {
+impl<const OFFSET: usize, const N: usize> ToSql for ConstOffsetAndLimit<OFFSET, N> {
     const SQL: ConstSqlStr = ConstSqlStr::empty()
-        .append_usize(N)
+        .append_usize(OFFSET)
         .append_str(", ")
-        .append_usize(OFFSET);
+        .append_usize(N);
 
     fn collect_parameters(&self, _f: &mut Vec<QueryValue>) {}
 }
 
-impl<U: Up, const N: usize, const OFFSET: usize> QueryTree<U> for ConstLimitAndOffset<N, OFFSET> {
+impl<U: Up, const OFFSET: usize, const N: usize> QueryTree<U> for ConstOffsetAndLimit<OFFSET, N> {
     type MaxUp = U;
 }
 
-impl ToSql for ParameterLimitAndOffset {
+impl ToSql for ParameterOffsetAndLimit {
     const SQL: ConstSqlStr = crate::sql_concat!([Parameter::<usize>], ", ", [Parameter::<usize>]);
 
     fn collect_parameters(&self, f: &mut Vec<QueryValue>) {
@@ -407,7 +407,7 @@ impl ToSql for ParameterLimitAndOffset {
     }
 }
 
-impl<U: Up> QueryTree<U> for ParameterLimitAndOffset
+impl<U: Up> QueryTree<U> for ParameterOffsetAndLimit
 where
     Parameter<usize>: QueryTree<U>,
     Parameter<usize>: QueryTree<<Parameter<usize> as QueryTree<U>>::MaxUp>,
