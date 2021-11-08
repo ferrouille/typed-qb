@@ -231,13 +231,12 @@ where
         <Q as SelectQuery>::Rows:
             CollectResults<<Q::Columns as FromRow>::Queried, Self::Iter<'a, Q>>,
     {
-        let sql = Q::SQL_STR;
-        debug!("Running query: {}", Q::SQL_STR);
-
         // Unfortunately this has to be a Vec<T> because the mysql crate internally uses a vec
         let mut params = Vec::new();
         query.collect_parameters(&mut params);
-        let results = self.exec_iter(&sql, into_params(params))?;
+
+        debug!("Running query: {} with params: {:?}", Q::SQL_STR, params);
+        let results = self.exec_iter(&Q::SQL_STR, into_params(params))?;
 
         <Q as SelectQuery>::Rows::collect_results(ResultIter {
             iter: results,
@@ -246,13 +245,12 @@ where
     }
 
     fn typed_exec<'a, Q: QueryRoot>(&'a mut self, query: Q) -> Result<(), mysql::Error> {
-        let sql = Q::SQL_STR;
-        debug!("Running query: {}", Q::SQL_STR);
-
         // Unfortunately this has to be a Vec<T> because the mysql crate internally uses a vec
         let mut params = Vec::new();
         query.collect_parameters(&mut params);
-        self.exec_drop(&sql, into_params(params))?;
+
+        debug!("Running query: {} with params: {:?}", Q::SQL_STR, params);
+        self.exec_drop(&Q::SQL_STR, into_params(params))?;
 
         Ok(())
     }
