@@ -100,7 +100,6 @@ pub use __private::ConstSqlStr;
 
 #[doc(hidden)]
 pub mod __private {
-    pub use concat_idents::concat_idents;
     pub use std::fmt::Debug;
     pub use std::marker::PhantomData;
 
@@ -362,18 +361,18 @@ pub mod __private {
             $target.append_str($a)
         };
 
-        ($target:expr; $a:literal, $($rest:tt),*) => {{
+        ($target:expr; $a:literal, $($rest:tt),*) => {
             $crate::sql_concat!($target.append_str($a); $($rest),*)
-        }};
-        ($target:expr; [$a:ty], $($rest:tt),*) => {{
+        };
+        ($target:expr; [$a:ty], $($rest:tt),*) => {
             $crate::sql_concat!($target.append_const_str(<$a>::SQL); $($rest),*)
-        }};
-        ($target:expr; $a:ident, $($rest:tt),*) => {{
+        };
+        ($target:expr; $a:ident, $($rest:tt),*) => {
             $crate::sql_concat!($target.append_const_str($a::SQL); $($rest),*)
-        }};
-        ($target:expr; ($a:expr), $($rest:tt),*) => {{
+        };
+        ($target:expr; ($a:expr), $($rest:tt),*) => {
             $crate::sql_concat!($target.append_str($a); $($rest),*)
-        }};
+        };
 
         ($($rest:tt),*) => {{
             let target = $crate::__private::ConstSqlStr::empty();
@@ -495,6 +494,12 @@ impl TableAlias for () {
 
 pub trait FieldName {
     const NAME: &'static str;
+}
+
+pub struct ConstFieldName<const NAME: &'static str>;
+
+impl<const NAME: &'static str> FieldName for ConstFieldName<NAME> {
+    const NAME: &'static str = NAME;
 }
 
 #[derive(Debug)]
@@ -1063,17 +1068,6 @@ macro_rules! data {
     };
 
     (finaloutput in $result:ident @ { $tykind:ident $ty:ty } $($key:ident : $value:expr,)*) => {
-        $(
-            $crate::__private::concat_idents!( fieldname = $key, FieldName {
-                #[allow(non_camel_case_types)]
-                struct fieldname;
-
-                impl $crate::FieldName for fieldname {
-                    const NAME: &'static str = stringify!($key);
-                }
-            });
-        )*
-
         #[allow(non_camel_case_types)]
         #[derive(Debug, Clone)]
         struct AnonymousData<$($key),*, M: $crate::typing::NullabilityModifier> {
@@ -1083,9 +1077,7 @@ macro_rules! data {
 
         #[allow(non_camel_case_types)]
         struct AnonymousDataInst<$($key: $crate::Fieldable),*, A, M: $crate::typing::NullabilityModifier> {
-            $(pub $key: $crate::Field<<<$key as $crate::expr::Value>::Ty as $crate::typing::Ty>::ModifyNullability<M>, A, $crate::__private::concat_idents!( fieldname = $key, FieldName {
-                fieldname
-            })>),*
+            $(pub $key: $crate::Field<<<$key as $crate::expr::Value>::Ty as $crate::typing::Ty>::ModifyNullability<M>, A, $crate::ConstFieldName<{ stringify!($key) }>>),*
         }
 
         $crate::data!(genquerytree @ $($key),*);
@@ -1217,7 +1209,7 @@ macro_rules! _internal_impl_selected_data {
             }
         }
 
-        $crate::_internal_impl_selected_data!(@withfields { $index + 1 } { $($rest)* } { $($key2)* });
+        $crate::_internal_impl_selected_data!(@withfields { $index + 1 } { $($rest)* } { $($key2)* })
     };
     (@output { $ty:ty } { $($key:ident,)* } { $($constraint:tt)* } { $finalgrouping:ty }) => {
         #[allow(non_camel_case_types)]
@@ -1286,68 +1278,50 @@ macro_rules! _internal_select_derive_to_sql {
 #[macro_export]
 macro_rules! table {
     ($name:ident $real_table_name:literal { $($field:ident $real_name:literal: $ty:ty,)* }) => {
-        $crate::__private::concat_idents!( modname = $name, Types {
-            #[allow(non_snake_case)]
-            mod modname {
-                use super::*;
-                $(
-                    #[allow(non_camel_case_types)]
-                    #[derive(Copy, Clone, Debug)]
-                    pub struct $field;
+        #[allow(non_snake_case)]
+        pub struct $name<A, N: $crate::typing::NullabilityModifier> {
+            $(
+                pub $field: $crate::Field<<$ty as $crate::typing::Ty>::ModifyNullability<N>, A, $crate::ConstFieldName<{ $real_name }>>,
+            )*
+        }
 
-                    impl $crate::FieldName for $field {
-                        const NAME: &'static str = $real_name;
-                    }
-                )*
+        impl<A: $crate::TableAlias, N: $crate::typing::NullabilityModifier> $crate::ToSql for $name<A, N> {
+            const SQL: $crate::ConstSqlStr = $crate::ConstSqlStr::empty()
+                .append_str("`")
+                .append_str(stringify!($name))
+                .append_str("`")
+            ;
 
-                #[derive(Clone)]
-                pub struct $name<A, N: $crate::typing::NullabilityModifier> {
+            fn collect_parameters(&self, _: &mut Vec<$crate::QueryValue>) {}
+        }
+
+        impl<U: $crate::Up, A: $crate::TableAlias, N: $crate::typing::NullabilityModifier> $crate::QueryTree<U> for $name<A, N> {
+            type MaxUp = U;
+        }
+
+        impl<A: $crate::TableAlias, N: $crate::typing::NullabilityModifier> $crate::TableReference for $name<A, N> {
+            type AllNullable = $name<A, $crate::typing::AllNullable>;
+
+            fn make_nullable(self) -> Self::AllNullable {
+                $name {
                     $(
-                        pub $field: $crate::Field<<$ty as $crate::typing::Ty>::ModifyNullability<N>, A, $field>,
+                        $field: $crate::Field::new(),
                     )*
                 }
             }
+        }
 
-            pub use modname::$name;
+        impl $crate::Table for $name<(), $crate::typing::KeepOriginalNullability> {
+            type WithAlias<X: $crate::TableAlias> = $name<X, $crate::typing::KeepOriginalNullability>;
 
-            impl<A: $crate::TableAlias, N: $crate::typing::NullabilityModifier> $crate::ToSql for $name<A, N> {
-                const SQL: $crate::ConstSqlStr = $crate::ConstSqlStr::empty()
-                    .append_str("`")
-                    .append_str(stringify!($name))
-                    .append_str("`")
-                ;
-
-                fn collect_parameters(&self, _: &mut Vec<$crate::QueryValue>) {}
-            }
-
-            impl<U: $crate::Up, A: $crate::TableAlias, N: $crate::typing::NullabilityModifier> $crate::QueryTree<U> for $name<A, N> {
-                type MaxUp = U;
-            }
-
-            impl<A: $crate::TableAlias, N: $crate::typing::NullabilityModifier> $crate::TableReference for $name<A, N> {
-                type AllNullable = $name<A, $crate::typing::AllNullable>;
-
-                fn make_nullable(self) -> Self::AllNullable {
-                    $name {
-                        $(
-                            $field: $crate::Field::new(),
-                        )*
-                    }
+            fn new<X: $crate::TableAlias>() -> Self::WithAlias<X> {
+                $name {
+                    $(
+                        $field: $crate::Field::new(),
+                    )*
                 }
             }
-
-            impl $crate::Table for $name<(), $crate::typing::KeepOriginalNullability> {
-                type WithAlias<X: $crate::TableAlias> = $name<X, $crate::typing::KeepOriginalNullability>;
-
-                fn new<X: $crate::TableAlias>() -> Self::WithAlias<X> {
-                    $name {
-                        $(
-                            $field: $crate::Field::new(),
-                        )*
-                    }
-                }
-            }
-        });
+        }
 
         impl<A: $crate::TableAlias, N: $crate::typing::NullabilityModifier> std::fmt::Debug for $name<A, N> {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

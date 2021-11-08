@@ -13,7 +13,6 @@ exclude = ["examples/"]
 mysql = "20"
 typed-qb-procmacro = { path = "../typed-qb-procmacro", version = "0.2" }
 log = "0.4"
-concat-idents = "1.1.3"
 chrono = "0.4"
 
 [dev-dependencies]
