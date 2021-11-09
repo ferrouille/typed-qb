@@ -128,9 +128,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 // For subqueries, the number of columns returned is checked at compile time (must be 1 column)
                 // For now, `as_where()` is needed if no further GROUP BY, LIMIT, etc. is specified
                 questions_asked: Questions::query(|question|
-                    select(data! {
-                        [COUNT(*)]
-                    }, |_|
+                    select(expr!(COUNT(*)), |_|
                         expr!(question.asked_by_id = user.id).as_where()
                     )
                 )

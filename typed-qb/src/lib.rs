@@ -793,15 +793,18 @@ pub struct DateTime {
     pub micro_seconds: u32,
 }
 
-pub trait Fieldable: Value {
-    type Grouped: IsGrouped = <Self as Value>::Grouped;
+pub trait Fieldable {
+    type Grouped: IsGrouped;
     type Repr;
+    type Ty: Ty;
 
     fn from_query_value(value: &QueryValue) -> Self::Repr;
 }
 
 impl<T: Ty, V: Value<Ty = T>> Fieldable for V {
     type Repr = <T::Nullable as IsNullable>::Repr<<T::Base as BaseTy>::Repr>;
+    type Ty = T;
+    type Grouped = V::Grouped;
 
     fn from_query_value(value: &QueryValue) -> Self::Repr {
         <T::Nullable as IsNullable>::parse::<T::Base>(value)
@@ -1077,7 +1080,7 @@ macro_rules! data {
 
         #[allow(non_camel_case_types)]
         struct AnonymousDataInst<$($key: $crate::Fieldable),*, A, M: $crate::typing::NullabilityModifier> {
-            $(pub $key: $crate::Field<<<$key as $crate::expr::Value>::Ty as $crate::typing::Ty>::ModifyNullability<M>, A, $crate::ConstFieldName<{ stringify!($key) }>>),*
+            $(pub $key: $crate::Field<<<$key as $crate::Fieldable>::Ty as $crate::typing::Ty>::ModifyNullability<M>, A, $crate::ConstFieldName<{ stringify!($key) }>>),*
         }
 
         $crate::data!(genquerytree @ $($key),*);
@@ -1171,7 +1174,7 @@ macro_rules! _internal_impl_selected_data {
 
         #[allow(non_camel_case_types)]
         impl<$key: $crate::Fieldable, M: $crate::typing::NullabilityModifier> $crate::select::SingleColumnSelectedData for AnonymousData<$key, M> {
-            type ColumnTy = <$key as $crate::expr::Value>::Ty;
+            type ColumnTy = <$key as $crate::Fieldable>::Ty;
             type ColumnGrouping = <$key as $crate::Fieldable>::Grouped;
         }
 

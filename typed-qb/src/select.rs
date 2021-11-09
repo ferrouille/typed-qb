@@ -12,8 +12,8 @@
 use crate::prelude::AllRows;
 use crate::qualifiers::AnyLimit;
 use crate::typing::{
-    AllNullable, Grouped, IsGrouped, KeepOriginalNullability, NullabilityModifier, Ty,
-    Undetermined, Ungrouped,
+    AllNullable, BaseTy, Grouped, IsGrouped, IsNullable, KeepOriginalNullability,
+    NullabilityModifier, Ty, Undetermined, Ungrouped,
 };
 use crate::{
     expr::Value, Alias, ConstSqlStr, QueryRoot, QueryTree, QueryValue, TableAlias, TableReference,
@@ -340,13 +340,24 @@ pub trait SingleColumnSelectedData {
 }
 
 impl<
-        D: SingleColumnSelectedData + SelectedData + ToSql,
+        T: Ty,
+        D: SingleColumnSelectedData<ColumnTy = T> + SelectedData + ToSql,
         L: AnyLimit + ToSql,
         F: FromTables + ToSql,
-    > Value for Select<D, L, F>
+    > Fieldable for Select<D, L, F>
 {
-    type Ty = <D as SingleColumnSelectedData>::ColumnTy;
+    type Repr = <T::Nullable as IsNullable>::Repr<<T::Base as BaseTy>::Repr>;
     type Grouped = Undetermined;
+    type Ty = T;
+
+    fn from_query_value(value: &QueryValue) -> Self::Repr {
+        <T::Nullable as IsNullable>::parse::<T::Base>(value)
+    }
+}
+
+impl<V: Value> SingleColumnSelectedData for V {
+    type ColumnTy = V::Ty;
+    type ColumnGrouping = V::Grouped;
 }
 
 /// See [super::Table::query].
@@ -413,7 +424,7 @@ where
     <T as Fieldable>::Grouped: GroupedToRows,
 {
     type Instantiated<A> =
-        Field<<<T as Value>::Ty as Ty>::ModifyNullability<M>, A, SingleColumnFieldName>;
+        Field<<<T as Fieldable>::Ty as Ty>::ModifyNullability<M>, A, SingleColumnFieldName>;
     type Repr = ();
     type Rows = <<T as Fieldable>::Grouped as GroupedToRows>::Output;
     type AllNullable = SingleColumn<T, AllNullable>;
@@ -477,7 +488,7 @@ impl<V: Value + Fieldable> SelectedData for V
 where
     <V as Fieldable>::Grouped: GroupedToRows,
 {
-    type Instantiated<A> = Field<V::Ty, A, SingleColumnFieldName>;
+    type Instantiated<A> = Field<<V as Fieldable>::Ty, A, SingleColumnFieldName>;
     type Repr = ();
     type Rows = <<V as Fieldable>::Grouped as GroupedToRows>::Output;
     type AllNullable = SingleColumn<V, AllNullable>;

@@ -1,5 +1,5 @@
 use crate::{
-    expr::{Distinct, Star, Value},
+    expr::{Distinct, Value, ValueOrStar},
     typing::{BigInt, Grouped, NonNullable, Nullable, Signed, SimpleTy, Ty, Unsigned},
     ConstSqlStr, QueryTree, ToSql, Up,
 };
@@ -98,9 +98,8 @@ pub struct Count<V: ValueStarOrDistinct> {
 
 pub trait ValueStarOrDistinct {}
 
-impl<V: Value> ValueStarOrDistinct for V {}
-impl ValueStarOrDistinct for Star {}
-impl<V: Value> ValueStarOrDistinct for Distinct<V> {}
+impl<V: ValueOrStar> ValueStarOrDistinct for V {}
+impl<V: ValueOrStar> ValueStarOrDistinct for Distinct<V> {}
 
 impl<U: Up, V: ValueStarOrDistinct + QueryTree<U>> QueryTree<U> for Count<V> {
     type MaxUp = V::MaxUp;

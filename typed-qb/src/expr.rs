@@ -621,7 +621,11 @@ impl<P: ParameterValue> ToSql for Parameter<P> {
 pub struct Star;
 
 #[derive(Debug)]
-pub struct Distinct<X: Value>(pub X);
+pub struct Distinct<X: ValueOrStar>(pub X);
+
+pub trait ValueOrStar {}
+impl<V: Value> ValueOrStar for V {}
+impl ValueOrStar for Star {}
 
 impl ToSql for Star {
     const SQL: ConstSqlStr = ConstSqlStr::new("*");
@@ -633,7 +637,7 @@ impl<U: Up> QueryTree<U> for Star {
     type MaxUp = U;
 }
 
-impl<X: Value + ToSql> ToSql for Distinct<X> {
+impl<X: ValueOrStar + ToSql> ToSql for Distinct<X> {
     const SQL: ConstSqlStr = sql_concat!("DISTINCT ", X);
 
     fn collect_parameters(&self, f: &mut Vec<QueryValue>) {
@@ -641,7 +645,7 @@ impl<X: Value + ToSql> ToSql for Distinct<X> {
     }
 }
 
-impl<U: Up, X: Value + QueryTree<U>> QueryTree<U> for Distinct<X> {
+impl<U: Up, X: ValueOrStar + QueryTree<U>> QueryTree<U> for Distinct<X> {
     type MaxUp = X::MaxUp;
 }
 
@@ -649,6 +653,7 @@ impl<U: Up, X: Value + QueryTree<U>> QueryTree<U> for Distinct<X> {
 mod test {
     use super::*;
     use crate::{
+        functions::COUNT,
         typing::{Int, Ungrouped},
         ConstSqlStr,
     };
@@ -742,5 +747,17 @@ mod test {
         is_value(&z);
         is_nullable(&z);
         // is_grouped(&z);
+    }
+
+    #[test]
+    pub fn type_tests() {
+        // Make sure COUNT(*) and COUNT(DISTINCT *) implement Value, ToSql and QueryTree<_>.
+        // * and DISTINCT are not Values on their own
+        fn _test1<U: Up>() -> impl Value + ToSql + QueryTree<U> {
+            COUNT(Distinct(Star))
+        }
+        fn _test2<U: Up>() -> impl Value + ToSql + QueryTree<U> {
+            COUNT(Star)
+        }
     }
 }
