@@ -414,6 +414,14 @@ fn parse_unary_expr(input: ParseStream) -> syn::Result<Expr> {
             keyword: ident,
             expr: Box::new(expr),
         }))
+    } else if let Ok(expr) = syn::group::parse_parens(input) {
+        let buf = expr.content;
+        let expr = Expr::parse(&buf)?;
+        if !buf.is_empty() {
+            return Err(buf.error("Found more tokens than expected"));
+        }
+
+        Ok(expr)
     } else if input.peek(Ident::peek_any) {
         let name = input.parse()?;
 
