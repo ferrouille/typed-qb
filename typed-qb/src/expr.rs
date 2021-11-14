@@ -134,6 +134,15 @@ impl ParameterValue for &str {
     }
 }
 
+impl ParameterValue for chrono::NaiveDateTime {
+    type Ty = Text;
+    type Nullable = NonNullable;
+
+    fn to_param(&self) -> QueryValue {
+        QueryValue::DateTime(self.into())
+    }
+}
+
 #[derive(Debug)]
 pub struct Parameter<P: ParameterValue>(pub P);
 

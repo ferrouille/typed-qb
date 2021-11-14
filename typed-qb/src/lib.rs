@@ -81,6 +81,7 @@ pub mod prelude {
     pub use crate::{data, expr, set, values, QueryInto, Table};
 }
 
+use chrono::{Datelike, Timelike};
 use delete::{Delete, DeleteQualifiers};
 use insert::{Insert, ValueList};
 // re-export the macros
@@ -791,6 +792,44 @@ pub struct DateTime {
     pub seconds: u8,
 
     pub micro_seconds: u32,
+}
+
+impl From<&chrono::NaiveDateTime> for DateTime {
+    fn from(dt: &chrono::NaiveDateTime) -> Self {
+        DateTime {
+            year: dt.year().try_into().unwrap(),
+            month: dt.month().try_into().unwrap(),
+            day: dt.day().try_into().unwrap(),
+            hour: dt.hour().try_into().unwrap(),
+            minutes: dt.minute().try_into().unwrap(),
+            seconds: dt.second().try_into().unwrap(),
+            micro_seconds: dt.nanosecond() / 1000,
+        }
+    }
+}
+
+impl From<crate::DateTime> for chrono::NaiveDateTime {
+    fn from(dt: crate::DateTime) -> Self {
+        chrono::NaiveDateTime::new(
+            chrono::NaiveDate::from_ymd(dt.year as i32, dt.month as u32, dt.day as u32),
+            chrono::NaiveTime::from_hms_micro(
+                dt.hour as u32,
+                dt.minutes as u32,
+                dt.seconds as u32,
+                dt.micro_seconds,
+            ),
+        )
+    }
+}
+
+impl From<crate::Time> for chrono::Duration {
+    fn from(t: crate::Time) -> Self {
+        chrono::Duration::days(t.days as i64)
+            + chrono::Duration::hours(t.hours as i64)
+            + chrono::Duration::minutes(t.minutes as i64)
+            + chrono::Duration::seconds(t.seconds as i64)
+            + chrono::Duration::microseconds(t.micro_seconds as i64)
+    }
 }
 
 pub trait Fieldable {

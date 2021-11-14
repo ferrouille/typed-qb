@@ -166,30 +166,6 @@ impl From<crate::Time> for Value {
     }
 }
 
-impl From<crate::DateTime> for chrono::NaiveDateTime {
-    fn from(dt: crate::DateTime) -> Self {
-        chrono::NaiveDateTime::new(
-            chrono::NaiveDate::from_ymd(dt.year as i32, dt.month as u32, dt.day as u32),
-            chrono::NaiveTime::from_hms_micro(
-                dt.hour as u32,
-                dt.minutes as u32,
-                dt.seconds as u32,
-                dt.micro_seconds,
-            ),
-        )
-    }
-}
-
-impl From<crate::Time> for chrono::Duration {
-    fn from(t: crate::Time) -> Self {
-        chrono::Duration::days(t.days as i64)
-            + chrono::Duration::hours(t.hours as i64)
-            + chrono::Duration::minutes(t.minutes as i64)
-            + chrono::Duration::seconds(t.seconds as i64)
-            + chrono::Duration::microseconds(t.micro_seconds as i64)
-    }
-}
-
 fn into_params(values: Vec<QueryValue>) -> Vec<Value> {
     values
         .into_iter()
