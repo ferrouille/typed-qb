@@ -299,6 +299,11 @@ impl<D: SelectedData, L: AnyLimit, F: FromTables> QueryRoot for Select<D, L, F> 
 {
 }
 
+impl<D: SelectedData, L: AnyLimit> QueryRoot for SelectWithoutFrom<D, L> where
+    Self: QueryTree<UpEnd> + ToSql
+{
+}
+
 impl<
         U: Up,
         D: SelectedData + QueryTree<U>,
@@ -369,8 +374,23 @@ pub struct SelectWithoutFrom<D: SelectedData, L: AnyLimit> {
 
 impl<D: SelectedData, L: AnyLimit> SelectQuery for SelectWithoutFrom<D, L> {
     type Columns = D;
-    type Rows = L::Rows<D::Rows>;
+
+    // Without a FROM, we will always get a single row as result
+    type Rows = L::Rows<ExactlyOne>;
     type Inverted = Self;
+}
+
+impl<D: SelectedData + ToSql, L: AnyLimit + ToSql> ToSql for SelectWithoutFrom<D, L> {
+    const SQL: ConstSqlStr = crate::sql_concat!("(SELECT ", D, " ", L, ")");
+
+    fn collect_parameters(&self, f: &mut Vec<QueryValue>) {
+        self.data.collect_parameters(f);
+        self.query.collect_parameters(f);
+    }
+}
+
+impl<U: Up, D: SelectedData + QueryTree<U>, L: AnyLimit + QueryTree<D::MaxUp>> QueryTree<U> for SelectWithoutFrom<D, L> {
+    type MaxUp = L::MaxUp;
 }
 
 impl<D: SelectedData, L: AnyLimit> PartialSelect<D, L> for SelectWithoutFrom<D, L> {
