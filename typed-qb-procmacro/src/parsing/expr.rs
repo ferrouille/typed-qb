@@ -225,6 +225,10 @@ crate::parsing::gen_wrapper! {
             pub(crate) token: Token![:],
             pub(crate) name: Ident,
         },
+        ParameterExpr {
+            pub(crate) token: Token![:],
+            pub(crate) block: Block,
+        },
         Null {
             pub(crate) keyword: Ident,
         },
@@ -389,8 +393,12 @@ fn parse_unary_expr(input: ParseStream) -> syn::Result<Expr> {
         }))
     } else if input.peek(Token![ : ]) {
         let token = input.parse()?;
-        let name = input.parse()?;
-        Ok(Expr::Parameter(Parameter { token, name }))
+        if let Ok(block) = input.parse() {
+            Ok(Expr::ParameterExpr(ParameterExpr { token, block }))
+        } else {
+            let name = input.parse()?;
+            Ok(Expr::Parameter(Parameter { token, name }))
+        }
     } else if input.peek(Token![ - ]) {
         let expr = parse_at_precedence(input, Precedence::Negate)?;
         Ok(Expr::Unary(Unary {

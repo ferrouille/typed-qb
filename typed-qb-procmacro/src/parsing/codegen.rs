@@ -30,6 +30,7 @@ impl ToTokenStream for Expr {
             Expr::Rust(b) => b.to_token_stream(w),
             Expr::Star(b) => b.to_token_stream(w),
             Expr::Distinct(b) => b.to_token_stream(w),
+            Expr::ParameterExpr(b) => b.to_token_stream(w),
         }
     }
 }
@@ -277,6 +278,15 @@ impl ToTokenStream for Parameter {
         w.extend(
             FunctionCallTokens::new(self.name.span(), &["typed_qb", "expr", "Parameter"])
                 .arg([TokenTree::Ident(self.name.clone())]),
+        );
+    }
+}
+
+impl ToTokenStream for ParameterExpr {
+    fn to_token_stream(&self, w: &mut TokenStream) {
+        w.extend(
+            FunctionCallTokens::new(self.block.span(), &["typed_qb", "expr", "Parameter"])
+                .arg(self.block.to_token_stream()),
         );
     }
 }
