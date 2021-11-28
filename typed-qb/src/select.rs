@@ -19,7 +19,7 @@ use crate::{
     expr::Value, Alias, ConstSqlStr, QueryRoot, QueryTree, QueryValue, TableAlias, TableReference,
     ToSql, Up, UpEnd, UpOne,
 };
-use crate::{sql_concat, Field, FieldName, Fieldable};
+use crate::{sql_concat, Field, FieldName, Fieldable, UniqueFieldName};
 use log::debug;
 use std::{fmt, marker::PhantomData};
 
@@ -389,7 +389,9 @@ impl<D: SelectedData + ToSql, L: AnyLimit + ToSql> ToSql for SelectWithoutFrom<D
     }
 }
 
-impl<U: Up, D: SelectedData + QueryTree<U>, L: AnyLimit + QueryTree<D::MaxUp>> QueryTree<U> for SelectWithoutFrom<D, L> {
+impl<U: Up, D: SelectedData + QueryTree<U>, L: AnyLimit + QueryTree<D::MaxUp>> QueryTree<U>
+    for SelectWithoutFrom<D, L>
+{
     type MaxUp = L::MaxUp;
 }
 
@@ -428,26 +430,27 @@ impl<D: SelectedData, L: AnyLimit> IntoPartialSelect<D, L> for SelectWithoutFrom
     }
 }
 
-pub struct SingleColumn<T, M> {
+pub struct SingleColumn<T: Fieldable, U: Up, M: NullabilityModifier> {
     value: T,
-    _phantom: PhantomData<M>,
+    _phantom: PhantomData<(U, M)>,
 }
 
-#[doc(hidden)]
-pub struct SingleColumnFieldName;
-impl FieldName for SingleColumnFieldName {
-    const NAME: &'static str = "value";
+impl<T: Fieldable, U: Up, M: NullabilityModifier> SingleColumnSelectedData
+    for SingleColumn<T, U, M>
+{
+    type ColumnTy = T::Ty;
+    type ColumnGrouping = T::Grouped;
 }
 
-impl<T: Fieldable, M: NullabilityModifier> SelectedData for SingleColumn<T, M>
+impl<T: Fieldable, U: Up, M: NullabilityModifier> SelectedData for SingleColumn<T, U, M>
 where
     <T as Fieldable>::Grouped: GroupedToRows,
 {
     type Instantiated<A> =
-        Field<<<T as Fieldable>::Ty as Ty>::ModifyNullability<M>, A, SingleColumnFieldName>;
+        Field<<<T as Fieldable>::Ty as Ty>::ModifyNullability<M>, A, UniqueFieldName<U>>;
     type Repr = ();
     type Rows = <<T as Fieldable>::Grouped as GroupedToRows>::Output;
-    type AllNullable = SingleColumn<T, AllNullable>;
+    type AllNullable = SingleColumn<T, U, AllNullable>;
 
     const NUM_COLS: usize = 1;
 
@@ -463,7 +466,7 @@ where
     }
 }
 
-impl<T: Fieldable, M: NullabilityModifier> FromRow for SingleColumn<T, M>
+impl<T: Fieldable, U: Up, M: NullabilityModifier> FromRow for SingleColumn<T, U, M>
 where
     <T as Fieldable>::Grouped: GroupedToRows,
 {
@@ -473,11 +476,11 @@ where
     }
 }
 
-impl<V: Value> IntoPartialSelect<SingleColumn<V, KeepOriginalNullability>, AllRows> for V
+impl<V: Value, U: Up> IntoPartialSelect<SingleColumn<V, U, KeepOriginalNullability>, AllRows> for V
 where
     V::Grouped: GroupedToRows,
 {
-    type Output = SelectWithoutFrom<SingleColumn<V, KeepOriginalNullability>, AllRows>;
+    type Output = SelectWithoutFrom<SingleColumn<V, U, KeepOriginalNullability>, AllRows>;
 
     fn into_partial_select(self) -> Self::Output {
         select(
@@ -490,50 +493,37 @@ where
     }
 }
 
-impl<U: Up, T: Fieldable + QueryTree<U>, M: NullabilityModifier> QueryTree<U>
-    for SingleColumn<T, M>
+impl<U: Up, T: Fieldable + QueryTree<UpOne<U>>, M: NullabilityModifier> QueryTree<U>
+    for SingleColumn<T, U, M>
 {
     type MaxUp = T::MaxUp;
 }
 
-impl<T: Fieldable + ToSql, M: NullabilityModifier> ToSql for SingleColumn<T, M> {
-    const SQL: ConstSqlStr = sql_concat!(T, " AS `", (SingleColumnFieldName::NAME), "`");
+impl<T: Fieldable + ToSql, U: Up, M: NullabilityModifier> ToSql for SingleColumn<T, U, M> {
+    const SQL: ConstSqlStr = sql_concat!(T, " AS `", (UniqueFieldName::<U>::NAME), "`");
 
     fn collect_parameters(&self, f: &mut Vec<QueryValue>) {
         self.value.collect_parameters(f)
     }
 }
 
-impl<V: Value + Fieldable> SelectedData for V
+pub trait AsSelectedData {
+    type Output<U: Up>: SelectedData;
+
+    fn as_selected_data<U: Up>(self) -> Self::Output<U>;
+}
+
+impl<V: Value + Fieldable> AsSelectedData for V
 where
     <V as Fieldable>::Grouped: GroupedToRows,
 {
-    type Instantiated<A> = Field<<V as Fieldable>::Ty, A, SingleColumnFieldName>;
-    type Repr = ();
-    type Rows = <<V as Fieldable>::Grouped as GroupedToRows>::Output;
-    type AllNullable = SingleColumn<V, AllNullable>;
+    type Output<U: Up> = SingleColumn<V, U, KeepOriginalNullability>;
 
-    const NUM_COLS: usize = 1;
-
-    fn instantiate<A: TableAlias>() -> Self::Instantiated<A> {
-        Field::new()
-    }
-
-    fn make_nullable(self) -> Self::AllNullable {
+    fn as_selected_data<U: Up>(self) -> Self::Output<U> {
         SingleColumn {
             value: self,
             _phantom: PhantomData,
         }
-    }
-}
-
-impl<V: Value + Fieldable> FromRow for V
-where
-    <V as Fieldable>::Grouped: GroupedToRows,
-{
-    type Queried = V::Repr;
-    fn from_row(columns: &[QueryValue]) -> Self::Queried {
-        V::from_query_value(&columns[0])
     }
 }
 
@@ -710,8 +700,6 @@ impl GroupedToRows for Undetermined {
 mod tests {
     use crate::typing::*;
 
-    // use super::FromRow;
-
     crate::table!(
         Foo "Foo" {
             id "Id": SimpleTy<BigInt<Signed>, NonNullable>,
@@ -720,21 +708,17 @@ mod tests {
         }
     );
 
-    // fn ground<T: QueryRoot + ToSql + FromRow>(t: T) -> T {
-    //     t
-    // }
-
     #[test]
     pub fn test_select() {
         // TODO: Why does this cause errors?
-        // assert_eq!(ground(Foo::query(|t|
+        // assert_eq!(Foo::query::<crate::UpEnd, _, _, _, _>(|t|
         //     select(data! {
-        //         _s: t.name,
-        //         _n: t.value,
-        //         _c: ConstI64::<5>,
+        //         s: t.name,
+        //         n: t.value,
+        //         c: ConstI64::<5>,
         //     }, |_| CmpEq(ConstI64::<6>, t.id)
         //     .group_by(t.name)
-        //     .limit_offset::<5, 7>()
-        // ))).sql_str(), "(SELECT `t0`.`Name` AS `_s`, `t0`.`Value` AS `_n`, 5 AS `_c` FROM `Foo` AS t0 WHERE (6 = `t0`.`Id`) GROUP BY `t0`.`Name` LIMIT 5, 7)");
+        //     .offset_limit::<5, 7>()
+        // )).sql_str(), "(SELECT `t0`.`Name` AS `_s`, `t0`.`Value` AS `_n`, 5 AS `_c` FROM `Foo` AS t0 WHERE (6 = `t0`.`Id`) GROUP BY `t0`.`Name` LIMIT 5, 7)");
     }
 }

@@ -9,7 +9,6 @@
     const_ptr_offset,
     const_slice_from_raw_parts,
     const_mut_refs,
-    const_raw_ptr_deref,
     const_fn_trait_bound
 )]
 
@@ -77,7 +76,7 @@ pub mod prelude {
         AllRows, AnyGroupedBy, AnyHaving, AnyLimit, AnyOrderedBy, AnyWhere, AsWhere,
         CreateOrderByEntry, GroupBySeq, OrderBySeq, Where,
     };
-    pub use crate::select::select;
+    pub use crate::select::{select, AsSelectedData};
     pub use crate::{data, expr, set, values, QueryInto, Table};
 }
 
@@ -90,11 +89,11 @@ pub use typed_qb_procmacro::*;
 use expr::Value;
 use qualifiers::{AllRows, AnyLimit};
 use select::{
-    BaseTable, InnerJoin, IntoPartialSelect, LeftJoin, NilTable, PartialSelect, Select,
-    SelectedData,
+    AsSelectedData, BaseTable, InnerJoin, IntoPartialSelect, LeftJoin, NilTable, PartialSelect,
+    Select, SelectedData, SingleColumn,
 };
 use std::{fmt, marker::PhantomData};
-use typing::{BaseTy, IsGrouped, IsNullable, Ty, Ungrouped};
+use typing::{BaseTy, IsGrouped, IsNullable, KeepOriginalNullability, Ty, Ungrouped};
 use update::{SetList, Update, UpdateQualifiers};
 
 pub use __private::ConstSqlStr;
@@ -499,6 +498,16 @@ pub trait FieldName {
 
 pub struct ConstFieldName<const NAME: &'static str>;
 
+pub struct UniqueFieldName<U: Up>(U);
+
+impl<U: Up> FieldName for UniqueFieldName<U> {
+    const NAME: &'static str = Self::SQL_NAME.as_str();
+}
+
+impl<U: Up> UniqueFieldName<U> {
+    const SQL_NAME: ConstSqlStr = ConstSqlStr::new("f").append_usize(U::NUM);
+}
+
 impl<const NAME: &'static str> FieldName for ConstFieldName<NAME> {
     const NAME: &'static str = NAME;
 }
@@ -602,14 +611,15 @@ pub trait Table: Sized {
     fn count<U: Up, L: AnyLimit, G: FnOnce(&Self::WithAlias<Alias<U>>) -> L>(
         qualifiers: G,
     ) -> Select<
-        functions::Count<expr::Star>,
+        SingleColumn<functions::Count<expr::Star>, U, KeepOriginalNullability>,
         L,
         BaseTable<U, Alias<U>, <Self as Table>::WithAlias<Alias<U>>, NilTable>,
     > {
         Self::query(|t| {
-            select::select(crate::functions::COUNT(crate::expr::Star), |_| {
-                qualifiers(t)
-            })
+            select::select(
+                crate::functions::COUNT(crate::expr::Star).as_selected_data(),
+                |_| qualifiers(t),
+            )
         })
     }
 
@@ -622,7 +632,7 @@ pub trait Table: Sized {
     /// let results = conn.typed_query(Users::count_all())?;
     /// # Ok::<(), mysql::Error>(())
     fn count_all<U: Up>() -> Select<
-        functions::Count<expr::Star>,
+        SingleColumn<functions::Count<expr::Star>, U, KeepOriginalNullability>,
         AllRows,
         BaseTable<U, Alias<U>, <Self as Table>::WithAlias<Alias<U>>, NilTable>,
     > {
@@ -883,12 +893,16 @@ macro_rules! count {
 /// # #![feature(generic_associated_types)]
 /// # use typed_qb::prelude::*;
 /// # #[derive(Default)]
-/// # struct Table { id: (), name: (), }
+/// # struct Stub {} impl<U: typed_qb::Up> typed_qb::QueryTree<U> for Stub { type MaxUp = U; }
+/// # #[derive(Default)]
+/// # struct Table { id: Stub, name: Stub, }
 /// # let table = Table::default();
+/// # fn ground<T: typed_qb::QueryTree<typed_qb::UpEnd>>(t: T) -> T { t }
 /// let data = data! {
 ///     a: table.id,
 ///     b: table.name,
 /// };
+/// # ground(data);
 /// ```
 ///
 /// An expression of the form `a.b` is shorthand for `b: a.b`:
@@ -897,13 +911,17 @@ macro_rules! count {
 /// # #![feature(generic_associated_types)]
 /// # use typed_qb::prelude::*;
 /// # #[derive(Default)]
-/// # struct Table { id: (), name: (), }
+/// # struct Stub {} impl<U: typed_qb::Up> typed_qb::QueryTree<U> for Stub { type MaxUp = U; }
+/// # #[derive(Default)]
+/// # struct Table { id: Stub, name: Stub, }
 /// # let table = Table::default();
+/// # fn ground<T: typed_qb::QueryTree<typed_qb::UpEnd>>(t: T) -> T { t }
 /// let data = data! {
 ///     table.id,
 ///     table.name,
 /// };
 /// // data contains two fields: id and name
+/// # ground(data);
 /// ```
 ///
 /// `[...]` can be used to include a SQL expression via [expr!]:
@@ -912,12 +930,16 @@ macro_rules! count {
 /// # #![feature(generic_associated_types)]
 /// # use typed_qb::prelude::*;
 /// # #[derive(Default)]
-/// # struct Table { id: (), name: (), }
+/// # struct Stub {} impl<U: typed_qb::Up> typed_qb::QueryTree<U> for Stub { type MaxUp = U; }
+/// # #[derive(Default)]
+/// # struct Table { id: Stub, name: Stub, }
 /// # let table = Table::default();
+/// # fn ground<T: typed_qb::QueryTree<typed_qb::UpEnd>>(t: T) -> T { t }
 /// let data = data! {
 ///     a: table.id,
 ///     b: [COUNT(*)], // equivalent to: expr!(COUNT(*))
 /// };
+/// # ground(data);
 /// ```
 ///
 /// When a single expression is provided, it is automatically named '_value':
@@ -926,12 +948,16 @@ macro_rules! count {
 /// # #![feature(generic_associated_types)]
 /// # use typed_qb::prelude::*;
 /// # #[derive(Default)]
-/// # struct Table { id: (), name: (), }
+/// # struct Stub {} impl<U: typed_qb::Up> typed_qb::QueryTree<U> for Stub { type MaxUp = U; }
+/// # #[derive(Default)]
+/// # struct Table { id: Stub, name: Stub, }
 /// # let table = Table::default();
+/// # fn ground<T: typed_qb::QueryTree<typed_qb::UpEnd>>(t: T) -> T { t }
 /// let data = data! {
 ///     [COUNT(*)]
 /// };
 /// // data now contains a single field `data._value`
+/// # ground(data);
 /// ```
 ///
 /// [`SelectedData`] is automatically derived for the anonymous struct.
@@ -941,8 +967,11 @@ macro_rules! count {
 /// # #![feature(generic_associated_types)]
 /// # use typed_qb::prelude::*;
 /// # #[derive(Default)]
-/// # struct Table { id: u32, name: String, }
+/// # struct Stub<T>(std::marker::PhantomData<T>); impl<T, U: typed_qb::Up> typed_qb::QueryTree<U> for Stub<T> { type MaxUp = U; }
+/// # #[derive(Default)]
+/// # struct Table { id: Stub<u32>, name: Stub<String>, }
 /// # let table = Table::default();
+/// # fn ground<T: typed_qb::QueryTree<typed_qb::UpEnd>>(t: T) -> T { t }
 ///
 /// #[derive(QueryInto)]
 /// struct MyData {
@@ -953,6 +982,7 @@ macro_rules! count {
 ///     table.id,
 ///     table.name,
 /// };
+/// # ground(data);
 /// ```
 ///
 /// If you are selecting multiple columns, you must derive [`QueryInto`] for the struct.
@@ -966,20 +996,49 @@ macro_rules! count {
 ///
 #[macro_export]
 macro_rules! data {
-    (genquerytree @ $($key:ident),*) => {
-        $crate::data!(genquerytree:zip @ $($key),*; U, $(<$key>::MaxUp),* => );
+    (genquerytree @ { $nextup:ty } $($key:ident ($alias:ty),)*) => {
+        // TODO: generate a triple of (ident : constraint => ty-of-alias)
+        // TODO: Reserve the first N UpOne<U>s for aliases, then add rest after that.
+        $crate::data!(genquerytree:zip @ $($key ($alias),)*; $nextup, $(<$key>::MaxUp,)* => );
     };
-    (genquerytree:zip @ $firsta:ident $(, $($a:ident),*)?; $firstb:ty $(, $($b:ty),*)? => $($out:tt,)*) => {
-        $crate::data!(genquerytree:zip @ $($($a),*)?; $($($b),*)? => $($out,)* [$firsta: $firstb],);
+    (genquerytree:zip @ $firsta:ident ($firstalias:ty), $($a:ident ($alias:ty),)*; $firstb:ty, $($b:ty,)* => $($out:tt,)*) => {
+        $crate::data!(genquerytree:zip @ $($a ($alias),)*; $($b,)* => $($out,)* [$firsta ($firstalias): $firstb],);
     };
-    (genquerytree:zip @ ; $final:ty => $($out:tt,)*) => {
+    (genquerytree:zip @ ; $final:ty, => $($out:tt,)*) => {
         $crate::data!(genquerytree:full @ $($out,)* => $final);
     };
-    (genquerytree:full @ $([ $key:ident : $constraint:ty ],)* => $final:ty) => {
+    (genquerytree:full @ [ $firstkey:ident ($firstalias:ty) : $firstconstraint:ty ], $($([ $key:ident ($alias:ty) : $constraint:ty ],)+)? => $final:ty) => {
         #[allow(non_camel_case_types)]
-        impl<U: $crate::Up, $($key,)* M: $crate::typing::NullabilityModifier> $crate::QueryTree<U> for AnonymousData<$($key),*, M>
-            where $($key : $crate::QueryTree<$constraint>,)* {
+        impl<U: $crate::Up, $firstkey, $($($key,)+)? M: $crate::typing::NullabilityModifier> $crate::QueryTree<U> for AnonymousData<$firstkey, $($($key,)+)? U, M>
+            where $firstkey : $crate::QueryTree<$firstconstraint>,
+                $($($key : $crate::QueryTree<$constraint>,)+)? {
             type MaxUp = $final;
+        }
+
+        #[allow(non_camel_case_types)]
+        impl<
+            U: $crate::Up,
+            $firstkey: $crate::ToSql,
+            $($($key: $crate::ToSql,)+)?
+            M: $crate::typing::NullabilityModifier
+        > $crate::ToSql for AnonymousData<$firstkey, $($($key,)+)? U, M>
+            where $firstkey : $crate::QueryTree<$firstconstraint>,
+                $($($key : $crate::QueryTree<$constraint>,)+)?{
+            // TODO: Require QueryTree for all parameters, use UniqueFieldName instead of the actual name of the field
+            const SQL: $crate::ConstSqlStr = $crate::sql_concat!(
+                $firstkey, " AS `", (<$crate::UniqueFieldName::<$firstalias> as $crate::FieldName>::NAME), "`"
+                $(, $(
+                    ", ", $key, " AS `", (<$crate::UniqueFieldName::<$alias> as $crate::FieldName>::NAME), "`"
+                ),+)?
+            );
+
+            fn collect_parameters(&self, params: &mut Vec<$crate::QueryValue>) {
+                self.$firstkey.collect_parameters(params);
+
+                $($(
+                    self.$key.collect_parameters(params);
+                )+)?
+            }
         }
     };
 
@@ -993,7 +1052,7 @@ macro_rules! data {
         $crate::data!(genfieldtypes @ { $($rest)* } { $($key2)* });
     };
 
-    (output @ { } $($key:ident : $value:expr),* $(,)*) => {
+    (output @ { } { $nextup:ty } $($key:ident ($alias:ty) : $value:expr),* $(,)*) => {
         {
             #[allow(non_camel_case_types)]
             #[derive(Clone)]
@@ -1023,16 +1082,16 @@ macro_rules! data {
             }
 
             let result;
-            $crate::data!(finaloutput in result @ { default AnonymousDataQueried::<$($key::Repr),*> } $($key: $value,)*);
+            $crate::data!(finaloutput in result @ { default AnonymousDataQueried::<$($key::Repr),*> } { $nextup } $($key ($alias): $value,)*);
 
             result
         }
     };
 
-    (output @ { $ty:ty } $($key:ident : $value:expr),* $(,)*) => {
+    (output @ { $ty:ty } { $nextup:ty } $($rest:tt)*) => {
         {
             let result;
-            $crate::data!(finaloutput in result @ { custom $ty } $($key: $value,)*);
+            $crate::data!(finaloutput in result @ { custom $ty } { $nextup } $($rest)*);
 
             result
         }
@@ -1040,7 +1099,7 @@ macro_rules! data {
 
     (fromrow @ custom { $ty:ty } { $key:ident } { $intermediate:ty }) => {
         #[allow(non_camel_case_types)]
-        impl<$key: $crate::Fieldable, M: $crate::typing::NullabilityModifier> $crate::select::FromRow for AnonymousData<$key, M>
+        impl<$key: $crate::Fieldable, U: $crate::Up, M: $crate::typing::NullabilityModifier> $crate::select::FromRow for AnonymousData<$key, U, M>
             where Self: $crate::select::SelectedData,
                 $ty: From<$key::Repr> {
             type Queried = $ty;
@@ -1052,10 +1111,9 @@ macro_rules! data {
 
     (fromrow @ custom { $ty:ty } { $($key:ident),* } { $intermediate:ty }) => {
         #[allow(non_camel_case_types)]
-        impl<$($key: $crate::Fieldable),*, M: $crate::typing::NullabilityModifier> $crate::select::FromRow for AnonymousData<$($key),*, M>
+        impl<$($key: $crate::Fieldable),*, U: $crate::Up, M: $crate::typing::NullabilityModifier> $crate::select::FromRow for AnonymousData<$($key),*, U, M>
             where Self: $crate::select::SelectedData,
-                $(<$ty as $crate::FieldType<{ stringify!($key) }>>::Ty: From<$key::Repr>,)*
-                {
+                $(<$ty as $crate::FieldType<{ stringify!($key) }>>::Ty: From<$key::Repr>,)* {
             type Queried = $ty;
             #[allow(unused_assignments)]
             fn from_row<'a>(columns: &'a [$crate::QueryValue]) -> Self::Queried {
@@ -1064,9 +1122,9 @@ macro_rules! data {
         }
 
         #[allow(non_camel_case_types)]
-        impl<$($key: $crate::Fieldable),*, M: $crate::typing::NullabilityModifier> $crate::select::IntoPartialSelect<AnonymousData<$($key),*, M>, AllRows> for AnonymousData<$($key),*, M>
+        impl<$($key: $crate::Fieldable),*, U: $crate::Up, M: $crate::typing::NullabilityModifier> $crate::select::IntoPartialSelect<AnonymousData<$($key),*, U, M>, AllRows> for AnonymousData<$($key),*, U, M>
             where Self: $crate::select::SelectedData, {
-            type Output = $crate::select::SelectWithoutFrom<Self, AllRows>;
+            type Output = $crate::select::SelectWithoutFrom<Self, $crate::qualifiers::AllRows>;
 
             fn into_partial_select(self) -> Self::Output {
                 select(self, |_| AllRows)
@@ -1076,7 +1134,7 @@ macro_rules! data {
 
     (fromrow @ default { $ty:ty } { $key:ident } { $intermediate:ty }) => {
         #[allow(non_camel_case_types)]
-        impl<$key: $crate::Fieldable, M: $crate::typing::NullabilityModifier> $crate::select::FromRow for AnonymousData<$key, M>
+        impl<$key: $crate::Fieldable, U: $crate::Up, M: $crate::typing::NullabilityModifier> $crate::select::FromRow for AnonymousData<$key, U, M>
             where Self: $crate::select::SelectedData {
             type Queried = $key::Repr;
             fn from_row(columns: &[$crate::QueryValue]) -> Self::Queried {
@@ -1087,10 +1145,9 @@ macro_rules! data {
 
     (fromrow @ default { $ty:ty } { $($key:ident),* } { $intermediate:ty }) => {
         #[allow(non_camel_case_types)]
-        impl<$($key: $crate::Fieldable),*, M: $crate::typing::NullabilityModifier> $crate::select::FromRow for AnonymousData<$($key),*, M>
+        impl<$($key: $crate::Fieldable),*, U: $crate::Up, M: $crate::typing::NullabilityModifier> $crate::select::FromRow for AnonymousData<$($key),*, U, M>
             where Self: $crate::select::SelectedData,
-                $(for<'a> $intermediate: $crate::WithField<{ stringify!($key) }, Output = $key::Repr>,)*
-                {
+                $(for<'a> $intermediate: $crate::WithField<{ stringify!($key) }, Output = $key::Repr>,)* {
             type Queried = $ty;
             #[allow(unused_assignments)]
             fn from_row<'a>(columns: &'a [$crate::QueryValue]) -> Self::Queried {
@@ -1099,38 +1156,38 @@ macro_rules! data {
         }
 
         #[allow(non_camel_case_types)]
-        impl<$($key: $crate::Fieldable),*, M: $crate::typing::NullabilityModifier> $crate::select::IntoPartialSelect<AnonymousData<$($key),*, M>, AllRows> for AnonymousData<$($key),*, M>
+        impl<$($key: $crate::Fieldable),*, U: $crate::Up, M: $crate::typing::NullabilityModifier> $crate::select::IntoPartialSelect<AnonymousData<$($key),*, U, M>, $crate::qualifiers::AllRows> for AnonymousData<$($key),*, U, M>
             where Self: $crate::select::SelectedData, {
-            type Output = $crate::select::SelectWithoutFrom<Self, AllRows>;
+            type Output = $crate::select::SelectWithoutFrom<Self, $crate::qualifiers::AllRows>;
 
             fn into_partial_select(self) -> Self::Output {
-                select(self, |_| AllRows)
+                select(self, |_| $crate::qualifiers::AllRows)
             }
         }
     };
 
-    (finaloutput in $result:ident @ { $tykind:ident $ty:ty } $($key:ident : $value:expr,)*) => {
+    (finaloutput in $result:ident @ { $tykind:ident $ty:ty } { $nextup:ty } $($key:ident ($alias:ty) : $value:expr,)*) => {
         #[allow(non_camel_case_types)]
         #[derive(Debug, Clone)]
-        struct AnonymousData<$($key),*, M: $crate::typing::NullabilityModifier> {
+        struct AnonymousData<$($key),*, U: $crate::Up, M: $crate::typing::NullabilityModifier> {
             $($key: $key,)*
-            _phantom: $crate::__private::PhantomData<M>,
+            _phantom: $crate::__private::PhantomData<(U, M)>,
         }
 
         #[allow(non_camel_case_types)]
-        struct AnonymousDataInst<$($key: $crate::Fieldable),*, A, M: $crate::typing::NullabilityModifier> {
-            $(pub $key: $crate::Field<<<$key as $crate::Fieldable>::Ty as $crate::typing::Ty>::ModifyNullability<M>, A, $crate::ConstFieldName<{ stringify!($key) }>>),*
+        struct AnonymousDataInst<$($key: $crate::Fieldable),*, A, U: $crate::Up, M: $crate::typing::NullabilityModifier> {
+            $(pub $key: $crate::Field<<<$key as $crate::Fieldable>::Ty as $crate::typing::Ty>::ModifyNullability<M>, A, $crate::UniqueFieldName<$alias>>),*
         }
 
-        $crate::data!(genquerytree @ $($key),*);
+        $crate::data!(genquerytree @ { $nextup } $($key ($alias),)*);
 
         $crate::_internal_impl_selected_data!({ $ty } $($key,)*);
-        $crate::_internal_select_derive_to_sql!($($key: $value),*);
+        $crate::_internal_select_derive_to_sql!($($key),*);
 
         $crate::data!(fromrow @ $tykind { $ty } { $($key),* } { Intermediate::<'a, $($key),*> });
 
         #[allow(non_camel_case_types)]
-        fn cast<$($key),*>(o: AnonymousData<$($key),*, $crate::typing::KeepOriginalNullability>) -> AnonymousData<$($key),*, $crate::typing::KeepOriginalNullability> {
+        fn cast<$($key),*, U: $crate::Up>(o: AnonymousData<$($key),*, U, $crate::typing::KeepOriginalNullability>) -> AnonymousData<$($key),*, U,$crate::typing::KeepOriginalNullability> {
             o
         }
 
@@ -1140,8 +1197,16 @@ macro_rules! data {
         });
     };
 
+    (enumerate @ { $($ty:tt)* } { $alias:ty } { } => { $($output:tt)* }) => {
+        $crate::data!(output @ { $($ty)* } { $alias } $($output)*)
+    };
+
+    (enumerate @ { $($ty:tt)* } { $alias:ty } { $firstkey:ident: $firstvalue:expr, $($key:ident: $value:expr,)* } => { $($output:tt)* }) => {
+        $crate::data!(enumerate @ { $($ty)* } { $crate::UpOne<$alias> } { $($key: $value,)* } => { $($output)* $firstkey ($alias): $firstvalue, })
+    };
+
     (preprocess @ { $($ty:tt)* } { $(,)* } => { $($key:ident: $value:expr,)* }) => {
-        $crate::data! { output @ { $($ty)* } $($key : $value),* }
+        $crate::data!(enumerate @ { $($ty)* } { U } { $($key : $value,)* } => {})
     };
     (preprocess @ { $($ty:tt)* } { $(,)* } => { $($rest:tt)* }) => {
         $crate::data!(preprocess @ { $($ty)* } { => $crate::qualifiers::AllRows } => { $($rest)* })
@@ -1188,12 +1253,12 @@ macro_rules! data {
 macro_rules! _internal_impl_selected_data {
     ({ $ty:ty } $key:ident,) => {
         #[allow(non_camel_case_types)]
-        impl<$key: $crate::Fieldable, M: $crate::typing::NullabilityModifier> $crate::select::SelectedData for AnonymousData<$key, M>
+        impl<$key: $crate::Fieldable, U: $crate::Up, M: $crate::typing::NullabilityModifier> $crate::select::SelectedData for AnonymousData<$key, U, M>
             where <$key as $crate::Fieldable>::Grouped: $crate::select::GroupedToRows, {
-            type Instantiated<A> = AnonymousDataInst<$key, A, M>;
+            type Instantiated<A> = AnonymousDataInst<$key, A, U, M>;
             type Repr = ();
             type Rows = <<$key as $crate::Fieldable>::Grouped as $crate::select::GroupedToRows>::Output;
-            type AllNullable = AnonymousData<$key, $crate::typing::AllNullable>;
+            type AllNullable = AnonymousData<$key, U, $crate::typing::AllNullable>;
 
             const NUM_COLS: usize = 1;
 
@@ -1212,13 +1277,13 @@ macro_rules! _internal_impl_selected_data {
         }
 
         #[allow(non_camel_case_types)]
-        impl<$key: $crate::Fieldable, M: $crate::typing::NullabilityModifier> $crate::select::SingleColumnSelectedData for AnonymousData<$key, M> {
+        impl<$key: $crate::Fieldable, U: $crate::Up, M: $crate::typing::NullabilityModifier> $crate::select::SingleColumnSelectedData for AnonymousData<$key, U, M> {
             type ColumnTy = <$key as $crate::Fieldable>::Ty;
             type ColumnGrouping = <$key as $crate::Fieldable>::Grouped;
         }
 
         #[allow(non_camel_case_types)]
-        impl<$key: $crate::Fieldable, M: $crate::typing::NullabilityModifier> $crate::select::IntoPartialSelect<AnonymousData<$key, M>, AllRows> for AnonymousData<$key, M>
+        impl<$key: $crate::Fieldable, U: $crate::Up, M: $crate::typing::NullabilityModifier> $crate::select::IntoPartialSelect<AnonymousData<$key, U, M>, AllRows> for AnonymousData<$key, U, M>
             where <$key as $crate::Fieldable>::Grouped: $crate::select::GroupedToRows {
             type Output = $crate::select::SelectWithoutFrom<Self, AllRows>;
 
@@ -1255,12 +1320,12 @@ macro_rules! _internal_impl_selected_data {
     };
     (@output { $ty:ty } { $($key:ident,)* } { $($constraint:tt)* } { $finalgrouping:ty }) => {
         #[allow(non_camel_case_types)]
-        impl<$($key: $crate::Fieldable),*, M: $crate::typing::NullabilityModifier> $crate::select::SelectedData for AnonymousData<$($key),*, M>
+        impl<$($key: $crate::Fieldable),*, U: $crate::Up, M: $crate::typing::NullabilityModifier> $crate::select::SelectedData for AnonymousData<$($key),*, U, M>
             where $($constraint)*
                 $finalgrouping: $crate::select::GroupedToRows {
-            type Instantiated<A> = AnonymousDataInst<$($key),*, A, M>;
+            type Instantiated<A> = AnonymousDataInst<$($key),*, A, U, M>;
             type Repr = ();
-            type AllNullable = AnonymousData<$($key),*, $crate::typing::AllNullable>;
+            type AllNullable = AnonymousData<$($key),*, U, $crate::typing::AllNullable>;
 
             type Rows = <$finalgrouping as $crate::select::GroupedToRows>::Output;
 
@@ -1290,29 +1355,30 @@ macro_rules! _internal_impl_selected_data {
 #[macro_export]
 #[doc(hidden)]
 macro_rules! _internal_select_derive_to_sql {
-    ($firstkey:ident : $firstvalue:expr $(, $($key:ident : $value:expr),*)?) => {
+    ($firstkey:ident $(, $($key:ident),*)?) => {
         {
-            #[allow(non_camel_case_types)]
-            impl<
-                $firstkey: $crate::ToSql,
-                $($($key: $crate::ToSql,)*)?
-                M: $crate::typing::NullabilityModifier
-            > $crate::ToSql for AnonymousData<$firstkey, $($($key,)*)? M> {
-                const SQL: $crate::ConstSqlStr = $crate::sql_concat!(
-                    $firstkey, " AS `", (stringify!($firstkey)), "`"
-                    $(, $(
-                        ", ", $key, " AS `", (stringify!($key)), "`"
-                    ),*)?
-                );
+            // #[allow(non_camel_case_types)]
+            // impl<
+            //     $firstkey: $crate::ToSql,
+            //     $($($key: $crate::ToSql,)*)?
+            //     M: $crate::typing::NullabilityModifier
+            // > $crate::ToSql for AnonymousData<$firstkey, $($($key,)*)? M> {
+            //     // TODO: Require QueryTree for all parameters, use UniqueFieldName instead of the actual name of the field
+            //     const SQL: $crate::ConstSqlStr = $crate::sql_concat!(
+            //         $firstkey, " AS `", (stringify!($firstkey)), "`"
+            //         $(, $(
+            //             ", ", $key, " AS `", (stringify!($key)), "`"
+            //         ),*)?
+            //     );
 
-                fn collect_parameters(&self, params: &mut Vec<$crate::QueryValue>) {
-                    self.$firstkey.collect_parameters(params);
+            //     fn collect_parameters(&self, params: &mut Vec<$crate::QueryValue>) {
+            //         self.$firstkey.collect_parameters(params);
 
-                    $($(
-                        self.$key.collect_parameters(params);
-                    )*)?
-                }
-            }
+            //         $($(
+            //             self.$key.collect_parameters(params);
+            //         )*)?
+            //     }
+            // }
         }
     }
 }

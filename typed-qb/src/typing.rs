@@ -575,51 +575,68 @@ impl<Y: AnyInt> MergeNumbers for (F64, Y) {
     type Result = F64;
 }
 
-
 #[cfg(test)]
 mod tests {
-    use crate::QueryValue;
     use super::BaseTy;
+    use crate::QueryValue;
 
     #[test]
     pub fn datetime_from_string() {
         let dt = QueryValue::String("2011-10-09 08:07:06.111111".to_string());
         let d = super::DateTime::parse(&dt);
-        assert_eq!(d, crate::DateTime {
-            year:2011,
-            month: 10,
-            day: 9,
-            hour: 8,
-            minutes: 7,
-            seconds: 6,
-            micro_seconds: 111_111,
-        });
-        assert_eq!(crate::DateTime::from(&chrono::NaiveDateTime::from(d.clone())), d);
+        assert_eq!(
+            d,
+            crate::DateTime {
+                year: 2011,
+                month: 10,
+                day: 9,
+                hour: 8,
+                minutes: 7,
+                seconds: 6,
+                micro_seconds: 111_111,
+            }
+        );
+        assert_eq!(
+            crate::DateTime::from(&chrono::NaiveDateTime::from(d.clone())),
+            d
+        );
 
         let dt = QueryValue::String("2011-10-09 08:07:06.5".to_string());
         let d = super::DateTime::parse(&dt);
-        assert_eq!(d, crate::DateTime {
-            year:2011,
-            month: 10,
-            day: 9,
-            hour: 8,
-            minutes: 7,
-            seconds: 6,
-            micro_seconds: 500_000,
-        });
-        assert_eq!(crate::DateTime::from(&chrono::NaiveDateTime::from(d.clone())), d);
+        assert_eq!(
+            d,
+            crate::DateTime {
+                year: 2011,
+                month: 10,
+                day: 9,
+                hour: 8,
+                minutes: 7,
+                seconds: 6,
+                micro_seconds: 500_000,
+            }
+        );
+        assert_eq!(
+            crate::DateTime::from(&chrono::NaiveDateTime::from(d.clone())),
+            d
+        );
 
         let dt = QueryValue::String("2011-10-09 08:07:06.54".to_string());
         let d = super::DateTime::parse(&dt);
-        assert_eq!(d, crate::DateTime {
-            year:2011,
-            month: 10,
-            day: 9,
-            hour: 8,
-            minutes: 7,
-            seconds: 6,
-            micro_seconds: 540_000,
-        });
-        assert_eq!(crate::DateTime::from(&chrono::NaiveDateTime::from(d.clone())), d);
+        assert_eq!(
+            d,
+            crate::DateTime {
+                year: 2011,
+                month: 10,
+                day: 9,
+                hour: 8,
+                minutes: 7,
+                seconds: 6,
+                micro_seconds: 540_000,
+            }
+        );
+        assert_eq!(
+            crate::DateTime::from(&chrono::NaiveDateTime::from(d.clone())),
+            d
+        );
     }
 }

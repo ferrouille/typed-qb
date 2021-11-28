@@ -47,7 +47,7 @@ pub fn MAX<V: Value>(of: V) -> Max<V> {
 }
 
 impl<V: Value> Value for Max<V> {
-    type Ty = SimpleTy<BigInt<Signed>, Nullable>;
+    type Ty = SimpleTy<<V::Ty as Ty>::Base, Nullable>;
     type Grouped = Grouped;
 }
 
