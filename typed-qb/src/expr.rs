@@ -72,6 +72,26 @@ impl<const S: &'static str> Value for ConstStr<S> {
     type Grouped = Undetermined;
 }
 
+#[derive(Debug)]
+pub struct Null;
+impl Value for Null {
+    type Ty = SimpleTy<Int<Signed>, Nullable>;
+    type Grouped = Undetermined;
+}
+
+impl<U: Up> QueryTree<U> for Null {
+    type MaxUp = U;
+}
+
+impl ToSql for Null {
+    const SQL: ConstSqlStr = ConstSqlStr::new("NULL");
+    const NUM_PARAMS: usize = 0;
+
+    fn collect_parameters<'a>(&self, params: &'a mut [QueryValue]) -> &'a mut [QueryValue] {
+        params
+    }
+}
+
 pub trait ParameterValue {
     type Ty: BaseTy;
     type Nullable: IsNullable;

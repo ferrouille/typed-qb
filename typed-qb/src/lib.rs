@@ -1553,7 +1553,7 @@ pub trait ToSql {
         Self::SQL_STR
     }
 
-    fn collect_parameters<'a>(&self, f: &'a mut [QueryValue]) -> &'a mut [QueryValue];
+    fn collect_parameters<'a>(&self, params: &'a mut [QueryValue]) -> &'a mut [QueryValue];
 }
 
 #[doc(hidden)]
