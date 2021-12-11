@@ -284,9 +284,20 @@ impl ToTokenStream for Parameter {
 
 impl ToTokenStream for ParameterExpr {
     fn to_token_stream(&self, w: &mut TokenStream) {
+        let mut inner = TokenStream::new();
+        inner.extend(quote::quote!(
+            // Prevents "unnecessary braces" warning from showing up
+            let _ = ();
+        ));
+        for stmt in self.block.stmts.iter() {
+            stmt.to_tokens(&mut inner);
+        }
+
+        let mut arg = TokenStream::new();
+        arg.extend([TokenTree::Group(Group::new(Delimiter::Brace, inner))]);
+
         w.extend(
-            FunctionCallTokens::new(self.block.span(), &["typed_qb", "expr", "Parameter"])
-                .arg(self.block.to_token_stream()),
+            FunctionCallTokens::new(self.block.span(), &["typed_qb", "expr", "Parameter"]).arg(arg),
         );
     }
 }
@@ -312,7 +323,16 @@ impl ToTokenStream for Null {
 
 impl ToTokenStream for Rust {
     fn to_token_stream(&self, w: &mut TokenStream) {
-        self.block.to_tokens(w)
+        let mut inner = TokenStream::new();
+        inner.extend(quote::quote!(
+            // Prevents "unnecessary braces" warning from showing up
+            let _ = ();
+        ));
+        for stmt in self.block.stmts.iter() {
+            stmt.to_tokens(&mut inner);
+        }
+
+        w.extend([TokenTree::Group(Group::new(Delimiter::Brace, inner))]);
     }
 }
 
