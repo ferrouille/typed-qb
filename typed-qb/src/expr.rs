@@ -143,6 +143,18 @@ impl ParameterValue for chrono::NaiveDateTime {
     }
 }
 
+impl<P: ParameterValue> ParameterValue for Option<P> {
+    type Ty = P::Ty;
+    type Nullable = Nullable;
+
+    fn to_param(&self) -> QueryValue {
+        match self {
+            Some(t) => t.to_param(),
+            None => QueryValue::Null,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct Parameter<P: ParameterValue>(pub P);
 

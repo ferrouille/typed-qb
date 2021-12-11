@@ -174,6 +174,33 @@ impl<D: SelectedData, L: AnyLimit, F: FromTables> TableReference for Select<D, L
 
 impl<D: SelectedData, L: AnyLimit, F: FromTables> FromTables for Select<D, L, F> {}
 
+
+pub struct SelectAsValue<S: SelectQuery<Rows = ExactlyOne>>(S);
+
+impl<D: SelectedData, L: AnyLimit, F: FromTables> Select<D, L, F> 
+    where Self: SelectQuery<Rows = ExactlyOne> {
+    pub fn as_value(self) -> SelectAsValue<Self> {
+        SelectAsValue(self)
+    }
+}
+
+impl<T: Ty, D: SelectedData + SingleColumnSelectedData<ColumnTy = T>, S: SelectQuery<Rows = ExactlyOne, Columns = D>> Value for SelectAsValue<S> {
+    type Ty = T;
+    type Grouped = Undetermined;
+}
+
+impl<U: Up, S: SelectQuery<Rows = ExactlyOne> + QueryTree<U>> QueryTree<U> for SelectAsValue<S> {
+    type MaxUp = S::MaxUp;
+}
+
+impl<S: SelectQuery<Rows = ExactlyOne> + ToSql> ToSql for SelectAsValue<S> {
+    const SQL: ConstSqlStr = sql_concat!("(", S, ")");
+
+    fn collect_parameters(&self, f: &mut Vec<QueryValue>) {
+        self.0.collect_parameters(f)
+    }
+}
+
 impl<DX: SelectedData + ToSql, LX: AnyLimit + ToSql, F: FromTables + ToSql> Select<DX, LX, F>
 where
     Self: SelectWithCompleteFrom,
