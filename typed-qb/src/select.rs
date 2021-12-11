@@ -116,11 +116,7 @@ impl ToSql for NilTable {
 pub trait PartialSelect<D: SelectedData, L: AnyLimit> {
     type From: FromTables;
 
-    fn map_from<U: Up, T: FromTables, F: FnOnce(Self::From) -> T>(self, f: F) -> Select<D, L, T>
-    where
-        D: QueryTree<U>,
-        L: QueryTree<D::MaxUp>,
-        T: QueryTree<L::MaxUp>;
+    fn map_from<T: FromTables, F: FnOnce(Self::From) -> T>(self, f: F) -> Select<D, L, T>;
 }
 
 /// Describes any data selected from a table.
@@ -372,12 +368,7 @@ impl<
 impl<D: SelectedData, L: AnyLimit, F: FromTables> PartialSelect<D, L> for Select<D, L, F> {
     type From = F;
 
-    fn map_from<U: Up, T: FromTables, G: FnOnce(Self::From) -> T>(self, f: G) -> Select<D, L, T>
-    where
-        D: QueryTree<U>,
-        L: QueryTree<D::MaxUp>,
-        T: QueryTree<L::MaxUp>,
-    {
+    fn map_from<T: FromTables, G: FnOnce(Self::From) -> T>(self, f: G) -> Select<D, L, T> {
         Select {
             select: self.select,
             from: f(self.from),
@@ -458,12 +449,7 @@ impl<U: Up, D: SelectedData + QueryTree<U>, L: AnyLimit + QueryTree<D::MaxUp>> Q
 impl<D: SelectedData, L: AnyLimit> PartialSelect<D, L> for SelectWithoutFrom<D, L> {
     type From = NilTable;
 
-    fn map_from<U: Up, T: FromTables, F: FnOnce(Self::From) -> T>(self, f: F) -> Select<D, L, T>
-    where
-        D: QueryTree<U>,
-        L: QueryTree<D::MaxUp>,
-        T: QueryTree<L::MaxUp>,
-    {
+    fn map_from<T: FromTables, F: FnOnce(Self::From) -> T>(self, f: F) -> Select<D, L, T> {
         Select {
             select: self,
             from: f(NilTable),
@@ -610,7 +596,7 @@ impl<A: TableAlias, T: TableReference, F: FromTables> BaseTable<A, T, F> {
 
 impl<
         U: Up,
-        A: TableAlias,
+        A: TableAlias + QueryTree<U>,
         T: TableReference + QueryTree<UpOne<U>>,
         F: FromTables + QueryTree<T::MaxUp>,
     > QueryTree<U> for BaseTable<A, T, F>
@@ -654,7 +640,7 @@ impl<A: TableAlias, N: TableReference, V: Value, F: FromTables> LeftJoin<A, N, V
 
 impl<
         U: Up,
-        A: TableAlias,
+        A: TableAlias + QueryTree<U>,
         N: TableReference + QueryTree<UpOne<U>>,
         V: Value + QueryTree<N::MaxUp>,
         F: FromTables + QueryTree<V::MaxUp>,
@@ -704,7 +690,7 @@ impl<A: TableAlias, N: TableReference, V: Value, F: FromTables> InnerJoin<A, N, 
 
 impl<
         U: Up,
-        A: TableAlias,
+        A: TableAlias + QueryTree<U>,
         N: TableReference + QueryTree<UpOne<U>>,
         V: Value + QueryTree<N::MaxUp>,
         F: FromTables + QueryTree<V::MaxUp>,

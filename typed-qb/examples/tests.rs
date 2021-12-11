@@ -44,5 +44,5 @@ fn main() {
         )
     }));
 
-    assert_eq!(q, "(SELECT `t4`.`Id` AS `f0`, (SELECT COUNT(*) AS `f2` FROM `Questions` AS t3 WHERE (`t3`.`AskedById` = `t4`.`Id`)) AS `f1` FROM `Questions` AS t4 LEFT JOIN `Users` AS t4 ON (`t4`.`Id` = `t4`.`AskedById`) WHERE (`f0` = ?))");
+    assert_eq!(q, "(SELECT `t4`.`Id` AS `f0`, (SELECT COUNT(*) AS `f2` FROM `Questions` AS t3 WHERE (`t3`.`AskedById` = `t5`.`Id`)) AS `f1` FROM `Questions` AS t4 LEFT JOIN `Users` AS t5 ON (`t5`.`Id` = `t4`.`AskedById`) WHERE (`f0` = ?))");
 }

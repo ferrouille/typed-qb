@@ -1,6 +1,6 @@
 use crate::{
     select::{ExactlyOne, FromRow, RowKind, SelectQuery, SelectedData, ZeroOrMore, ZeroOrOne},
-    QueryRoot, QueryValue, ToSql,
+    QueryRoot, QueryValue,
 };
 use log::{debug, trace};
 use mysql::{prelude::Queryable, Binary, QueryResult, Value};
