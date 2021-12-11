@@ -113,7 +113,11 @@ impl ToSql for NilTable {
 pub trait PartialSelect<D: SelectedData, L: AnyLimit> {
     type From: FromTables;
 
-    fn map_from<T: FromTables, F: FnOnce(Self::From) -> T>(self, f: F) -> Select<D, L, T>;
+    fn map_from<U: Up, T: FromTables, F: FnOnce(Self::From) -> T>(self, f: F) -> Select<D, L, T>
+    where
+        D: QueryTree<U>,
+        L: QueryTree<D::MaxUp>,
+        T: QueryTree<L::MaxUp>;
 }
 
 /// Describes any data selected from a table.
@@ -179,8 +183,8 @@ where
     /// That is, it generates something of the form `SELECT .. FROM (self)`.
     pub fn query<
         U: Up,
-        D: SelectedData,
-        L: AnyLimit,
+        D: SelectedData + QueryTree<U>,
+        L: AnyLimit + QueryTree<D::MaxUp>,
         I: IntoPartialSelect<D, L>,
         G: FnOnce(&DX::Instantiated<Alias<U>>) -> I,
     >(
@@ -190,14 +194,18 @@ where
         D,
         L,
         BaseTable<
-            U,
-            Alias<U>,
+            Alias<L::MaxUp>,
             Select<DX, LX, F>,
             <<I as IntoPartialSelect<D, L>>::Output as PartialSelect<D, L>>::From,
         >,
     >
     where
         Self: QueryTree<UpOne<U>>,
+        BaseTable<
+            Alias<L::MaxUp>,
+            Select<DX, LX, F>,
+            <<I as IntoPartialSelect<D, L>>::Output as PartialSelect<D, L>>::From,
+        >: QueryTree<L::MaxUp>,
     {
         let table = DX::instantiate();
         let query = data(&table);
@@ -213,8 +221,8 @@ where
     pub fn left_join<
         U: Up,
         V: Value,
-        D: SelectedData,
-        L: AnyLimit,
+        D: SelectedData + QueryTree<U>,
+        L: AnyLimit + QueryTree<D::MaxUp>,
         C: FnOnce(&<DX::AllNullable as SelectedData>::Instantiated<Alias<U>>) -> V,
         I: IntoPartialSelect<D, L>,
         G: FnOnce(&<DX::AllNullable as SelectedData>::Instantiated<Alias<U>>) -> I,
@@ -226,7 +234,6 @@ where
         D,
         L,
         LeftJoin<
-            U,
             Alias<U>,
             <Select<DX, LX, F> as TableReference>::AllNullable,
             V,
@@ -236,6 +243,12 @@ where
     where
         <DX as SelectedData>::AllNullable: ToSql,
         Self: QueryTree<UpOne<U>>,
+        LeftJoin<
+            Alias<U>,
+            <Select<DX, LX, F> as TableReference>::AllNullable,
+            V,
+            <<I as IntoPartialSelect<D, L>>::Output as PartialSelect<D, L>>::From,
+        >: QueryTree<L::MaxUp>,
     {
         let table = DX::AllNullable::instantiate();
         let query = data(&table);
@@ -252,8 +265,8 @@ where
     pub fn inner_join<
         U: Up,
         V: Value,
-        D: SelectedData,
-        L: AnyLimit,
+        D: SelectedData + QueryTree<U>,
+        L: AnyLimit + QueryTree<D::MaxUp>,
         C: FnOnce(&DX::Instantiated<Alias<U>>) -> V,
         I: IntoPartialSelect<D, L>,
         G: FnOnce(&DX::Instantiated<Alias<U>>) -> I,
@@ -265,7 +278,6 @@ where
         D,
         L,
         InnerJoin<
-            U,
             Alias<U>,
             Select<DX, LX, F>,
             V,
@@ -275,6 +287,12 @@ where
     where
         <DX as SelectedData>::AllNullable: ToSql,
         Self: QueryTree<UpOne<U>>,
+        InnerJoin<
+            Alias<U>,
+            Select<DX, LX, F>,
+            V,
+            <<I as IntoPartialSelect<D, L>>::Output as PartialSelect<D, L>>::From,
+        >: QueryTree<L::MaxUp>,
     {
         let table = DX::instantiate();
         let query = data(&table);
@@ -289,8 +307,8 @@ where
 
 pub trait SelectWithCompleteFrom {}
 
-impl<D: SelectedData, L: AnyLimit, U: Up, A: TableAlias, T: TableReference, F: FromTables>
-    SelectWithCompleteFrom for Select<D, L, BaseTable<U, A, T, F>>
+impl<D: SelectedData, L: AnyLimit, A: TableAlias, T: TableReference, F: FromTables>
+    SelectWithCompleteFrom for Select<D, L, BaseTable<A, T, F>>
 {
 }
 
@@ -314,12 +332,15 @@ impl<
     type MaxUp = F::MaxUp;
 }
 
-impl<D: SelectedData + ToSql, L: AnyLimit + ToSql, F: FromTables + ToSql> PartialSelect<D, L>
-    for Select<D, L, F>
-{
+impl<D: SelectedData, L: AnyLimit, F: FromTables> PartialSelect<D, L> for Select<D, L, F> {
     type From = F;
 
-    fn map_from<T: FromTables, G: FnOnce(Self::From) -> T>(self, f: G) -> Select<D, L, T> {
+    fn map_from<U: Up, T: FromTables, G: FnOnce(Self::From) -> T>(self, f: G) -> Select<D, L, T>
+    where
+        D: QueryTree<U>,
+        L: QueryTree<D::MaxUp>,
+        T: QueryTree<L::MaxUp>,
+    {
         Select {
             select: self.select,
             from: f(self.from),
@@ -398,7 +419,12 @@ impl<U: Up, D: SelectedData + QueryTree<U>, L: AnyLimit + QueryTree<D::MaxUp>> Q
 impl<D: SelectedData, L: AnyLimit> PartialSelect<D, L> for SelectWithoutFrom<D, L> {
     type From = NilTable;
 
-    fn map_from<T: FromTables, F: FnOnce(Self::From) -> T>(self, f: F) -> Select<D, L, T> {
+    fn map_from<U: Up, T: FromTables, F: FnOnce(Self::From) -> T>(self, f: F) -> Select<D, L, T>
+    where
+        D: QueryTree<U>,
+        L: QueryTree<D::MaxUp>,
+        T: QueryTree<L::MaxUp>,
+    {
         Select {
             select: self,
             from: f(NilTable),
@@ -412,9 +438,7 @@ pub trait IntoPartialSelect<D: SelectedData, L: AnyLimit> {
     fn into_partial_select(self) -> Self::Output;
 }
 
-impl<F: FromTables + ToSql, D: SelectedData + ToSql, L: AnyLimit + ToSql> IntoPartialSelect<D, L>
-    for Select<D, L, F>
-{
+impl<F: FromTables, D: SelectedData, L: AnyLimit> IntoPartialSelect<D, L> for Select<D, L, F> {
     type Output = Self;
 
     fn into_partial_select(self) -> Self::Output {
@@ -528,13 +552,13 @@ where
 }
 
 #[derive(Debug)]
-pub struct BaseTable<U: Up, A: TableAlias, T: TableReference, F: FromTables> {
+pub struct BaseTable<A: TableAlias, T: TableReference, F: FromTables> {
     table: T,
     next: F,
-    _phantom: PhantomData<(U, A)>,
+    _phantom: PhantomData<A>,
 }
 
-impl<U: Up, A: TableAlias, T: TableReference, F: FromTables> BaseTable<U, A, T, F> {
+impl<A: TableAlias, T: TableReference, F: FromTables> BaseTable<A, T, F> {
     pub fn new(table: T, next: F) -> Self {
         Self {
             table,
@@ -549,25 +573,18 @@ impl<
         A: TableAlias,
         T: TableReference + QueryTree<UpOne<U>>,
         F: FromTables + QueryTree<T::MaxUp>,
-    > QueryTree<U> for BaseTable<U, A, T, F>
+    > QueryTree<U> for BaseTable<A, T, F>
 {
     type MaxUp = F::MaxUp;
 }
 
-impl<U: Up, A: TableAlias, T: TableReference, F: FromTables> FromTables for BaseTable<U, A, T, F> {}
+impl<A: TableAlias, T: TableReference, F: FromTables> FromTables for BaseTable<A, T, F> {}
 
-impl<U: Up, A: TableAlias, T: TableReference + ToSql, F: FromTables + ToSql> ToSql
-    for BaseTable<U, A, T, F>
-{
+impl<A: TableAlias, T: TableReference + ToSql, F: FromTables + ToSql> ToSql for BaseTable<A, T, F> {
     const SQL: ConstSqlStr = crate::sql_concat!(" FROM ", T, " AS ", (A::NAME), F);
 
     fn collect_parameters(&self, f: &mut Vec<QueryValue>) {
-        debug!(
-            "BaseTable {} with alias {} has QueryTree Id = {}",
-            T::SQL_STR,
-            A::NAME,
-            U::NUM
-        );
+        debug!("BaseTable {} with alias {}", T::SQL_STR, A::NAME,);
         self.table.collect_parameters(f);
         self.next.collect_parameters(f);
     }
@@ -576,14 +593,14 @@ impl<U: Up, A: TableAlias, T: TableReference + ToSql, F: FromTables + ToSql> ToS
 // TODO: UNIONs
 /// See [super::Table::left_join].
 #[derive(Debug)]
-pub struct LeftJoin<U: Up, A: TableAlias, N: TableReference, V: Value, F: FromTables> {
+pub struct LeftJoin<A: TableAlias, N: TableReference, V: Value, F: FromTables> {
     condition: V,
     table: N,
     next: F,
-    _phantom: PhantomData<(U, A)>,
+    _phantom: PhantomData<A>,
 }
 
-impl<U: Up, A: TableAlias, N: TableReference, V: Value, F: FromTables> LeftJoin<U, A, N, V, F> {
+impl<A: TableAlias, N: TableReference, V: Value, F: FromTables> LeftJoin<A, N, V, F> {
     pub fn new(condition: V, table: N, next: F) -> Self {
         Self {
             condition,
@@ -597,30 +614,26 @@ impl<U: Up, A: TableAlias, N: TableReference, V: Value, F: FromTables> LeftJoin<
 impl<
         U: Up,
         A: TableAlias,
-        N: TableReference,
-        V: Value + QueryTree<UpOne<U>>,
+        N: TableReference + QueryTree<UpOne<U>>,
+        V: Value + QueryTree<N::MaxUp>,
         F: FromTables + QueryTree<V::MaxUp>,
-    > QueryTree<U> for LeftJoin<U, A, N, V, F>
+    > QueryTree<U> for LeftJoin<A, N, V, F>
 {
     type MaxUp = F::MaxUp;
 }
 
-impl<U: Up, A: TableAlias, N: TableReference, V: Value, F: FromTables> FromTables
-    for LeftJoin<U, A, N, V, F>
+impl<A: TableAlias, N: TableReference, V: Value, F: FromTables> FromTables
+    for LeftJoin<A, N, V, F>
 {
 }
 
-impl<U: Up, A: TableAlias, N: TableReference + ToSql, V: Value + ToSql, F: FromTables + ToSql> ToSql
-    for LeftJoin<U, A, N, V, F>
+impl<A: TableAlias, N: TableReference + ToSql, V: Value + ToSql, F: FromTables + ToSql> ToSql
+    for LeftJoin<A, N, V, F>
 {
     const SQL: ConstSqlStr = crate::sql_concat!(" LEFT JOIN ", N, " AS ", (A::NAME), " ON ", V, F);
 
     fn collect_parameters(&self, f: &mut Vec<QueryValue>) {
-        debug!(
-            "LEFT JOIN with alias {} has QueryTree Id = {}",
-            A::NAME,
-            U::NUM
-        );
+        debug!("LEFT JOIN with alias {}", A::NAME);
         self.table.collect_parameters(f);
         self.condition.collect_parameters(f);
         self.next.collect_parameters(f);
@@ -629,14 +642,14 @@ impl<U: Up, A: TableAlias, N: TableReference + ToSql, V: Value + ToSql, F: FromT
 
 /// See [super::Table::inner_join].
 #[derive(Debug)]
-pub struct InnerJoin<U: Up, A: TableAlias, N: TableReference, V: Value, F: FromTables> {
+pub struct InnerJoin<A: TableAlias, N: TableReference, V: Value, F: FromTables> {
     condition: V,
     table: N,
     next: F,
-    _phantom: PhantomData<(U, A, N)>,
+    _phantom: PhantomData<A>,
 }
 
-impl<U: Up, A: TableAlias, N: TableReference, V: Value, F: FromTables> InnerJoin<U, A, N, V, F> {
+impl<A: TableAlias, N: TableReference, V: Value, F: FromTables> InnerJoin<A, N, V, F> {
     pub fn new(condition: V, table: N, next: F) -> Self {
         Self {
             condition,
@@ -650,30 +663,26 @@ impl<U: Up, A: TableAlias, N: TableReference, V: Value, F: FromTables> InnerJoin
 impl<
         U: Up,
         A: TableAlias,
-        N: TableReference,
-        V: Value + QueryTree<UpOne<U>>,
+        N: TableReference + QueryTree<UpOne<U>>,
+        V: Value + QueryTree<N::MaxUp>,
         F: FromTables + QueryTree<V::MaxUp>,
-    > QueryTree<U> for InnerJoin<U, A, N, V, F>
+    > QueryTree<U> for InnerJoin<A, N, V, F>
 {
     type MaxUp = F::MaxUp;
 }
 
-impl<U: Up, A: TableAlias, N: TableReference, V: Value, F: FromTables> FromTables
-    for InnerJoin<U, A, N, V, F>
+impl<A: TableAlias, N: TableReference, V: Value, F: FromTables> FromTables
+    for InnerJoin<A, N, V, F>
 {
 }
 
-impl<U: Up, A: TableAlias, N: TableReference + ToSql, V: Value + ToSql, F: FromTables + ToSql> ToSql
-    for InnerJoin<U, A, N, V, F>
+impl<A: TableAlias, N: TableReference + ToSql, V: Value + ToSql, F: FromTables + ToSql> ToSql
+    for InnerJoin<A, N, V, F>
 {
     const SQL: ConstSqlStr = crate::sql_concat!(" INNER JOIN ", N, " AS ", (A::NAME), " ON ", V, F);
 
     fn collect_parameters(&self, f: &mut Vec<QueryValue>) {
-        debug!(
-            "INNER JOIN with alias {} has QueryTree Id = {}",
-            A::NAME,
-            U::NUM
-        );
+        debug!("INNER JOIN with alias {}", A::NAME);
         self.table.collect_parameters(f);
         self.condition.collect_parameters(f);
         self.next.collect_parameters(f);

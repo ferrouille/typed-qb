@@ -553,6 +553,8 @@ pub trait TableReference {
     fn make_nullable(self) -> Self::AllNullable;
 }
 
+type CountAll<U> = SingleColumn<functions::Count<expr::Star>, U, KeepOriginalNullability>;
+
 pub trait Table: Sized {
     type WithAlias<A: TableAlias>: TableReference;
 
@@ -577,22 +579,28 @@ pub trait Table: Sized {
     /// ```
     fn query<
         U: Up,
-        D: SelectedData,
-        L: AnyLimit,
+        D: SelectedData + QueryTree<U>,
+        L: AnyLimit + QueryTree<D::MaxUp>,
         I: IntoPartialSelect<D, L>,
-        G: FnOnce(&Self::WithAlias<Alias<U>>) -> I,
+        G: FnOnce(&Self::WithAlias<Alias<L::MaxUp>>) -> I,
     >(
         data: G,
     ) -> Select<
         D,
         L,
         BaseTable<
-            U,
-            Alias<U>,
-            Self::WithAlias<Alias<U>>,
+            Alias<L::MaxUp>,
+            Self::WithAlias<Alias<L::MaxUp>>,
             <<I as IntoPartialSelect<D, L>>::Output as PartialSelect<D, L>>::From,
         >,
-    > {
+    >
+    where
+        BaseTable<
+            Alias<L::MaxUp>,
+            Self::WithAlias<Alias<L::MaxUp>>,
+            <<I as IntoPartialSelect<D, L>>::Output as PartialSelect<D, L>>::From,
+        >: QueryTree<L::MaxUp>,
+    {
         let table = Self::new();
         let query = data(&table);
         query
@@ -608,13 +616,18 @@ pub trait Table: Sized {
     /// # let mut conn = FakeConn;
     /// let results = conn.typed_query(Users::count(|user| expr!(user.id != 4).as_where()))?;
     /// # Ok::<(), mysql::Error>(())
-    fn count<U: Up, L: AnyLimit, G: FnOnce(&Self::WithAlias<Alias<U>>) -> L>(
+    fn count<U: Up, L: AnyLimit, G: FnOnce(&Self::WithAlias<Alias<L::MaxUp>>) -> L>(
         qualifiers: G,
     ) -> Select<
-        SingleColumn<functions::Count<expr::Star>, U, KeepOriginalNullability>,
+        CountAll<U>,
         L,
-        BaseTable<U, Alias<U>, <Self as Table>::WithAlias<Alias<U>>, NilTable>,
-    > {
+        BaseTable<Alias<L::MaxUp>, <Self as Table>::WithAlias<Alias<L::MaxUp>>, NilTable>,
+    >
+    where
+        CountAll<U>: QueryTree<U>,
+        L: QueryTree<<CountAll<U> as QueryTree<U>>::MaxUp>,
+        <Self as Table>::WithAlias<Alias<L::MaxUp>>: QueryTree<UpOne<L::MaxUp>>,
+    {
         Self::query(|t| {
             select::select(
                 crate::functions::COUNT(crate::expr::Star).as_selected_data(),
@@ -632,10 +645,22 @@ pub trait Table: Sized {
     /// let results = conn.typed_query(Users::count_all())?;
     /// # Ok::<(), mysql::Error>(())
     fn count_all<U: Up>() -> Select<
-        SingleColumn<functions::Count<expr::Star>, U, KeepOriginalNullability>,
+        CountAll<U>,
         AllRows,
-        BaseTable<U, Alias<U>, <Self as Table>::WithAlias<Alias<U>>, NilTable>,
-    > {
+        BaseTable<
+            Alias<<AllRows as QueryTree<<CountAll<U> as QueryTree<U>>::MaxUp>>::MaxUp>,
+            <Self as Table>::WithAlias<
+                Alias<<AllRows as QueryTree<<CountAll<U> as QueryTree<U>>::MaxUp>>::MaxUp>,
+            >,
+            NilTable,
+        >,
+    >
+    where
+        CountAll<U>: QueryTree<U>,
+        <Self as Table>::WithAlias<
+            Alias<<AllRows as QueryTree<<CountAll<U> as QueryTree<U>>::MaxUp>>::MaxUp>,
+        >: QueryTree<UpOne<<AllRows as QueryTree<<CountAll<U> as QueryTree<U>>::MaxUp>>::MaxUp>>,
+    {
         Self::count(|_| AllRows)
     }
 
@@ -665,12 +690,14 @@ pub trait Table: Sized {
     /// ```
     fn left_join<
         U: Up,
-        V: Value,
-        D: SelectedData,
-        L: AnyLimit,
+        D: SelectedData + QueryTree<U>,
+        L: AnyLimit + QueryTree<D::MaxUp>,
+        // N: TableReference is a simple reference here, which has for QueryTree<U>: MaxUp = U
+        // So V then needs QueryTree<N::MaxUp> which resolves to QueryTree<UpOne<L::MaxUp>>
+        V: Value + QueryTree<UpOne<L::MaxUp>>,
         I: IntoPartialSelect<D, L>,
-        C: FnOnce(&<Self::WithAlias<Alias<U>> as TableReference>::AllNullable) -> V,
-        G: FnOnce(&<Self::WithAlias<Alias<U>> as TableReference>::AllNullable) -> I,
+        C: FnOnce(&<Self::WithAlias<Alias<L::MaxUp>> as TableReference>::AllNullable) -> V,
+        G: FnOnce(&<Self::WithAlias<Alias<L::MaxUp>> as TableReference>::AllNullable) -> I,
     >(
         condition: C,
         data: G,
@@ -678,13 +705,28 @@ pub trait Table: Sized {
         D,
         L,
         LeftJoin<
-            U,
-            Alias<U>,
-            <Self::WithAlias<Alias<U>> as TableReference>::AllNullable,
+            Alias<L::MaxUp>,
+            <Self::WithAlias<Alias<L::MaxUp>> as TableReference>::AllNullable,
             V,
             <<I as IntoPartialSelect<D, L>>::Output as PartialSelect<D, L>>::From,
         >,
-    > {
+    >
+    where
+        <Self::WithAlias<Alias<L::MaxUp>> as TableReference>::AllNullable:
+            QueryTree<UpOne<L::MaxUp>>,
+        V: QueryTree<
+            <<Self::WithAlias<Alias<L::MaxUp>> as TableReference>::AllNullable as QueryTree<
+                UpOne<L::MaxUp>,
+            >>::MaxUp,
+        >,
+        <<I as IntoPartialSelect<D, L>>::Output as PartialSelect<D, L>>::From: QueryTree<
+            <V as QueryTree<
+                <<Self::WithAlias<Alias<L::MaxUp>> as TableReference>::AllNullable as QueryTree<
+                    UpOne<L::MaxUp>,
+                >>::MaxUp,
+            >>::MaxUp,
+        >,
+    {
         let table = Self::new().make_nullable();
         let query = data(&table);
         query
@@ -698,11 +740,11 @@ pub trait Table: Sized {
     fn inner_join<
         U: Up,
         V: Value,
-        D: SelectedData,
-        L: AnyLimit,
+        D: SelectedData + QueryTree<U>,
+        L: AnyLimit + QueryTree<D::MaxUp>,
         I: IntoPartialSelect<D, L>,
-        C: FnOnce(&Self::WithAlias<Alias<U>>) -> V,
-        G: FnOnce(&Self::WithAlias<Alias<U>>) -> I,
+        C: FnOnce(&Self::WithAlias<Alias<L::MaxUp>>) -> V,
+        G: FnOnce(&Self::WithAlias<Alias<L::MaxUp>>) -> I,
     >(
         condition: C,
         data: G,
@@ -710,13 +752,20 @@ pub trait Table: Sized {
         D,
         L,
         InnerJoin<
-            U,
-            Alias<U>,
-            Self::WithAlias<Alias<U>>,
+            Alias<L::MaxUp>,
+            Self::WithAlias<Alias<L::MaxUp>>,
             V,
             <<I as IntoPartialSelect<D, L>>::Output as PartialSelect<D, L>>::From,
         >,
-    > {
+    >
+    where
+        InnerJoin<
+            Alias<L::MaxUp>,
+            Self::WithAlias<Alias<L::MaxUp>>,
+            V,
+            <<I as IntoPartialSelect<D, L>>::Output as PartialSelect<D, L>>::From,
+        >: QueryTree<L::MaxUp>,
+    {
         let table = Self::new();
         let query = data(&table);
         query
