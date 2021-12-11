@@ -6,8 +6,6 @@
 #![feature(
     generic_associated_types,
     associated_type_defaults,
-    const_ptr_offset,
-    const_slice_from_raw_parts,
     const_mut_refs,
     const_fn_trait_bound
 )]
@@ -126,7 +124,7 @@ pub mod __private {
             self.len
         }
 
-        pub const fn append_str(mut self, s: &'static str) -> Self {
+        pub const fn append_str(mut self, s: &str) -> Self {
             let b = s.as_bytes();
             let mut index = 0;
             loop {
@@ -301,7 +299,7 @@ pub mod __private {
             self.append_str(resize_and_strify(&target, index, target.len() - index))
         }
 
-        pub const fn as_str(&self) -> &'static str {
+        pub const fn as_str<'a>(&'a self) -> &'a str {
             resize_and_strify(&self.data, 0, self.len)
         }
     }
@@ -324,18 +322,48 @@ pub mod __private {
         index
     }
 
-    pub const fn resize_and_strify(data: &[u8], offset: usize, len: usize) -> &'static str {
+    pub const fn resize_and_strify<'a>(data: &'a [u8], offset: usize, len: usize) -> &'a str {
         if offset + len > data.len() {
             panic!("Tried to slice out of bounds")
         }
 
-        unsafe {
-            let ptr = data.as_ptr().add(offset);
-            let slice = std::ptr::slice_from_raw_parts(ptr, len);
-            let slice: &[u8] = &*slice as &[u8];
+        // Remove the `offset` first bytes
+        let mut data = data;
+        let mut k = offset;
+        loop {
+            if k == 0 {
+                break;
+            }
 
-            std::mem::transmute(slice)
+            k -= 1;
+
+            match data.split_first() {
+                Some((_, rest)) => data = rest,
+                None => panic!(),
+            }
         }
+
+        // Compute the number of bytes we need to remove from the end and remove them
+        let mut k = data.len() - len;
+        loop {
+            if k == 0 {
+                break;
+            }
+
+            k -= 1;
+
+            match data.split_last() {
+                Some((_, rest)) => data = rest,
+                None => panic!(),
+            }
+        }
+
+        // Make sure we didn't mess up the slicing
+        if data.len() != len {
+            panic!();
+        }
+
+        unsafe { std::str::from_utf8_unchecked(data) }
     }
 
     #[macro_export]
