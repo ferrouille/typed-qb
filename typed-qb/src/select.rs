@@ -10,7 +10,7 @@
 //! ```
 
 use crate::prelude::AllRows;
-use crate::qualifiers::AnyLimit;
+use crate::qualifiers::{AnyLimit, AsAnyLimit};
 use crate::typing::{
     AllNullable, BaseTy, Grouped, IsGrouped, IsNullable, KeepOriginalNullability,
     NullabilityModifier, Ty, Undetermined, Ungrouped,
@@ -45,14 +45,14 @@ use std::{fmt, marker::PhantomData};
 /// ))?;
 /// # Ok::<(), mysql::Error>(())
 /// ```
-pub fn select<D: SelectedData, L: AnyLimit>(
+pub fn select<U: Up, D: AsSelectedData<U>, L: AsAnyLimit>(
     data: D,
-    qualifiers: impl FnOnce(&D::Instantiated<()>) -> L,
-) -> SelectWithoutFrom<D, L> {
-    let new = D::instantiate();
+    qualifiers: impl FnOnce(&<D::Output as SelectedData>::Instantiated<()>) -> L,
+) -> SelectWithoutFrom<D::Output, L::Output> {
+    let new = <D::Output as SelectedData>::instantiate();
     SelectWithoutFrom {
-        query: qualifiers(&new),
-        data,
+        query: qualifiers(&new).as_any_limit(),
+        data: data.as_selected_data(),
     }
 }
 
@@ -422,6 +422,12 @@ pub struct SelectWithoutFrom<D: SelectedData, L: AnyLimit> {
     query: L,
 }
 
+impl<D: SelectedData, L: AnyLimit> SelectWithoutFrom<D, L> {
+    pub fn new(data: D, query: L) -> SelectWithoutFrom<D, L> {
+        SelectWithoutFrom { data, query }
+    }
+}
+
 impl<D: SelectedData, L: AnyLimit> SelectQuery for SelectWithoutFrom<D, L> {
     type Columns = D;
 
@@ -482,6 +488,17 @@ impl<D: SelectedData, L: AnyLimit> IntoPartialSelect<D, L> for SelectWithoutFrom
 pub struct SingleColumn<T: Fieldable, U: Up, M: NullabilityModifier> {
     value: T,
     _phantom: PhantomData<(U, M)>,
+}
+
+impl<T: Fieldable, U: Up, M: NullabilityModifier> AsSelectedData<U> for SingleColumn<T, U, M>
+where
+    <T as Fieldable>::Grouped: GroupedToRows,
+{
+    type Output = Self;
+
+    fn as_selected_data(self) -> Self::Output {
+        self
+    }
 }
 
 impl<T: Fieldable, U: Up, M: NullabilityModifier> SingleColumnSelectedData
@@ -557,19 +574,19 @@ impl<T: Fieldable + ToSql, U: Up, M: NullabilityModifier> ToSql for SingleColumn
     }
 }
 
-pub trait AsSelectedData {
-    type Output<U: Up>: SelectedData;
+pub trait AsSelectedData<U: Up> {
+    type Output: SelectedData;
 
-    fn as_selected_data<U: Up>(self) -> Self::Output<U>;
+    fn as_selected_data(self) -> Self::Output;
 }
 
-impl<V: Value + Fieldable> AsSelectedData for V
+impl<V: Value + Fieldable, U: Up> AsSelectedData<U> for V
 where
     <V as Fieldable>::Grouped: GroupedToRows,
 {
-    type Output<U: Up> = SingleColumn<V, U, KeepOriginalNullability>;
+    type Output = SingleColumn<V, U, KeepOriginalNullability>;
 
-    fn as_selected_data<U: Up>(self) -> Self::Output<U> {
+    fn as_selected_data(self) -> Self::Output {
         SingleColumn {
             value: self,
             _phantom: PhantomData,

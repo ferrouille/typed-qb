@@ -1,6 +1,6 @@
 #![feature(generic_associated_types)]
 
-use typed_qb::{prelude::*, qualifiers::AsWhere, QueryRoot};
+use typed_qb::{prelude::*, QueryRoot};
 
 // These "tests" are here because they cause compiler errors when placed in the main lib.
 // See the test in select.rs that is commented out.
@@ -36,9 +36,9 @@ fn main() {
                 select(
                     data! {
                         question.id,
-                        num: Questions::count(|q| expr!(q.asked_by_id = user.id).as_where()),
+                        num: Questions::count(|q| expr!(q.asked_by_id = user.id)),
                     },
-                    |selected| expr!(selected.id = :k).as_where(),
+                    |selected| expr!(selected.id = :k),
                 )
             },
         )

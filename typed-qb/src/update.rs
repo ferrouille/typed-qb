@@ -163,7 +163,7 @@ mod tests {
                     t.name => ConstStr::<"Test">,
                     t.value => ConstI64::<5>,
                 },
-                |t| CmpEq(ConstI64::<6>, t.id).as_where()
+                |t| CmpEq(ConstI64::<6>, t.id)
             ))
             .sql_str(),
             "UPDATE `Foo` SET `Name` = 'Test', `Value` = 5 WHERE (6 = `Id`)"

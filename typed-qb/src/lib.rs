@@ -85,7 +85,7 @@ use insert::{Insert, ValueList};
 pub use typed_qb_procmacro::*;
 
 use expr::Value;
-use qualifiers::{AllRows, AnyLimit};
+use qualifiers::{AllRows, AnyLimit, AsAnyLimit};
 use select::{
     AsSelectedData, BaseTable, InnerJoin, IntoPartialSelect, LeftJoin, NilTable, PartialSelect,
     Select, SelectedData, SingleColumn,
@@ -629,8 +629,7 @@ pub trait Table: Sized {
             Self::WithAlias<Alias<U>>,
             <<I as IntoPartialSelect<D, L>>::Output as PartialSelect<D, L>>::From,
         >,
-    >
-    {
+    > {
         let table = Self::new();
         let query = data(&table);
         query
@@ -644,16 +643,15 @@ pub trait Table: Sized {
     /// # #![feature(generic_associated_types)]
     /// # use typed_qb::__doctest::*;
     /// # let mut conn = FakeConn;
-    /// let results = conn.typed_query(Users::count(|user| expr!(user.id != 4).as_where()))?;
+    /// let results = conn.typed_query(Users::count(|user| expr!(user.id != 4)))?;
     /// # Ok::<(), mysql::Error>(())
-    fn count<U: Up, UA: Up, L: AnyLimit, G: FnOnce(&Self::WithAlias<Alias<UA>>) -> L>(
+    fn count<U: Up, UA: Up, L: AsAnyLimit, G: FnOnce(&Self::WithAlias<Alias<UA>>) -> L>(
         qualifiers: G,
     ) -> Select<
         CountAll<U>,
-        L,
+        L::Output,
         BaseTable<Alias<UA>, <Self as Table>::WithAlias<Alias<UA>>, NilTable>,
-    >
-    {
+    > {
         Self::query::<UA, _, _, _, _>(|t| {
             select::select(
                 crate::functions::COUNT(crate::expr::Star).as_selected_data(),
@@ -673,13 +671,7 @@ pub trait Table: Sized {
     fn count_all<U: Up, UA: Up>() -> Select<
         CountAll<U>,
         AllRows,
-        BaseTable<
-            Alias<UA>,
-            <Self as Table>::WithAlias<
-                Alias<UA>,
-            >,
-            NilTable,
-        >,
+        BaseTable<Alias<UA>, <Self as Table>::WithAlias<Alias<UA>>, NilTable>,
     > {
         Self::count(|_| AllRows)
     }
@@ -771,16 +763,19 @@ pub trait Table: Sized {
     fn update<
         S: SetList,
         F: FnOnce(&Self::WithAlias<()>) -> S,
-        L: UpdateQualifiers,
+        L: AsAnyLimit,
         C: FnOnce(&Self::WithAlias<()>) -> L,
     >(
         list: F,
         chain: C,
-    ) -> Update<Self, S, L> {
+    ) -> Update<Self, S, L::Output>
+    where
+        L::Output: UpdateQualifiers,
+    {
         let table = Self::new();
         Update {
             sets: list(&table),
-            qualifiers: chain(&table),
+            qualifiers: chain(&table).as_any_limit(),
             _phantom: PhantomData,
         }
     }
@@ -1173,7 +1168,7 @@ macro_rules! data {
             type Output = $crate::select::SelectWithoutFrom<Self, $crate::qualifiers::AllRows>;
 
             fn into_partial_select(self) -> Self::Output {
-                select(self, |_| AllRows)
+                $crate::select::SelectWithoutFrom::new(self, $crate::qualifiers::AllRows)
             }
         }
     };
@@ -1207,7 +1202,7 @@ macro_rules! data {
             type Output = $crate::select::SelectWithoutFrom<Self, $crate::qualifiers::AllRows>;
 
             fn into_partial_select(self) -> Self::Output {
-                select(self, |_| $crate::qualifiers::AllRows)
+                $crate::select::SelectWithoutFrom::new(self, $crate::qualifiers::AllRows)
             }
         }
     };
@@ -1323,6 +1318,16 @@ macro_rules! _internal_impl_selected_data {
         }
 
         #[allow(non_camel_case_types)]
+        impl<$key: $crate::Fieldable, U: $crate::Up, M: $crate::typing::NullabilityModifier> $crate::select::AsSelectedData<U> for AnonymousData<$key, U, M>
+            where <$key as $crate::Fieldable>::Grouped: $crate::select::GroupedToRows, {
+            type Output = Self;
+
+            fn as_selected_data(self) -> Self::Output {
+                self
+            }
+        }
+
+        #[allow(non_camel_case_types)]
         impl<$key: $crate::Fieldable, U: $crate::Up, M: $crate::typing::NullabilityModifier> $crate::select::SingleColumnSelectedData for AnonymousData<$key, U, M> {
             type ColumnTy = <$key as $crate::Fieldable>::Ty;
             type ColumnGrouping = <$key as $crate::Fieldable>::Grouped;
@@ -1388,6 +1393,17 @@ macro_rules! _internal_impl_selected_data {
                     $($key: self.$key),*,
                     _phantom: $crate::__private::PhantomData,
                 }
+            }
+        }
+
+        #[allow(non_camel_case_types)]
+        impl<$($key: $crate::Fieldable),*, U: $crate::Up, M: $crate::typing::NullabilityModifier> $crate::select::AsSelectedData<U> for AnonymousData<$($key),*, U, M>
+            where $($constraint)*
+                $finalgrouping: $crate::select::GroupedToRows {
+            type Output = Self;
+
+            fn as_selected_data(self) -> Self::Output {
+                self
             }
         }
 

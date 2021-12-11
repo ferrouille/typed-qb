@@ -15,27 +15,23 @@ pub trait AsWhere: Sized + Value
 where
     Self::Ty: Ty<Base = Bool>,
 {
-    fn as_where(self) -> Where<Self> {
-        Where::new(self)
-    }
-
     fn group_by<S: GroupBySeq>(self, values: S) -> GroupBy<Where<Self>, S> {
-        self.as_where().group_by(values)
+        Where::new(self).group_by(values)
     }
 
     fn having<V: Value>(self, value: V) -> Having<Where<Self>, V> {
-        self.as_where().having(value)
+        Where::new(self).having(value)
     }
 
     fn order_by<S: OrderBySeq>(self, values: S) -> OrderBy<Where<Self>, S> {
-        self.as_where().order_by(values)
+        Where::new(self).order_by(values)
     }
 
     fn limit<const N: usize>(self) -> Limit<Where<Self>, ConstLimit<N>>
     where
         ConstLimit<N>: ModifyRows,
     {
-        self.as_where().limit::<N>()
+        Where::new(self).limit::<N>()
     }
 
     fn offset_limit<const OFFSET: usize, const N: usize>(
@@ -44,11 +40,11 @@ where
     where
         ConstOffsetAndLimit<OFFSET, N>: ModifyRows,
     {
-        self.as_where().offset_limit::<OFFSET, N>()
+        Where::new(self).offset_limit::<OFFSET, N>()
     }
 
     fn limit_param(self, row_count: usize) -> Limit<Where<Self>, ParameterLimit> {
-        self.as_where().limit_param(row_count)
+        Where::new(self).limit_param(row_count)
     }
 
     fn offset_limit_params(
@@ -56,11 +52,51 @@ where
         offset: usize,
         row_count: usize,
     ) -> Limit<Where<Self>, ParameterOffsetAndLimit> {
-        self.as_where().offset_limit_params(offset, row_count)
+        Where::new(self).offset_limit_params(offset, row_count)
     }
 }
 
 impl<V: Value> AsWhere for V where V::Ty: Ty<Base = Bool> {}
+
+pub trait AsAnyLimit {
+    type Output: AnyLimit;
+
+    fn as_any_limit(self) -> Self::Output;
+}
+
+impl<W: AsWhere + Value> AsAnyLimit for W
+where
+    W::Ty: Ty<Base = Bool>,
+{
+    type Output = Where<W>;
+
+    fn as_any_limit(self) -> Self::Output {
+        Where::new(self)
+    }
+}
+
+macro_rules! as_any_limit_identity_impl {
+    ($([$($constraints:tt)*] $ty:ty),* $(,)*) => {
+        $(
+            impl<$($constraints)*> AsAnyLimit for $ty {
+                type Output = Self;
+
+                fn as_any_limit(self) -> Self::Output {
+                    self
+                }
+            }
+        )*
+    }
+}
+
+as_any_limit_identity_impl!(
+    [] AllRows,
+    [V: Value] Where<V>,
+    [I: AnyWhere, S: GroupBySeq] GroupBy<I, S>,
+    [I: AnyGroupedBy, V: Value] Having<I, V>,
+    [I: AnyHaving, S: OrderBySeq] OrderBy<I, S>,
+    [I: AnyOrderedBy, L: LimitValue] Limit<I, L>,
+);
 
 // WHERE
 impl<T: AnyWhere> AnyGroupedBy for T {}
@@ -146,8 +182,8 @@ impl<U: Up, I: AnyWhere + QueryTree<U>, S: GroupBySeq + QueryTree<I::MaxUp>> Que
     type MaxUp = S::MaxUp;
 }
 
-impl<I: AnyWhere, V: Value> AnyGroupedBy for GroupBy<I, V> {}
-impl<I: AnyWhere, V: Value> ModifyRows for GroupBy<I, V> {
+impl<I: AnyWhere, S: GroupBySeq> AnyGroupedBy for GroupBy<I, S> {}
+impl<I: AnyWhere, S: GroupBySeq> ModifyRows for GroupBy<I, S> {
     type Rows<R: RowKind> = ZeroOrMore;
 }
 
