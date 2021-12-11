@@ -70,7 +70,7 @@ pub trait Database {
         <Q as SelectQuery>::Rows:
             CollectResults<<Q::Columns as FromRow>::Queried, Self::Iter<'a, Q>>;
 
-    fn typed_exec<'a, Q: QueryRoot>(&'a mut self, query: Q) -> Result<(), mysql::Error>;
+    fn typed_exec<'a, Q: QueryRoot>(&'a mut self, query: Q) -> Result<usize, mysql::Error>;
 }
 
 pub struct ResultIter<'c, 't, 'tc, Q> {
@@ -220,14 +220,14 @@ where
         })
     }
 
-    fn typed_exec<'a, Q: QueryRoot>(&'a mut self, query: Q) -> Result<(), mysql::Error> {
+    fn typed_exec<'a, Q: QueryRoot>(&'a mut self, query: Q) -> Result<usize, mysql::Error> {
         // Unfortunately this has to be a Vec<T> because the mysql crate internally uses a vec
         let mut params = Vec::new();
         query.collect_parameters(&mut params);
 
         debug!("Running query: {} with params: {:?}", Q::SQL_STR, params);
-        self.exec_drop(&Q::SQL_STR, into_params(params))?;
+        let result = self.exec_iter(&Q::SQL_STR, into_params(params))?;
 
-        Ok(())
+        Ok(result.last_insert_id().unwrap_or(0) as usize)
     }
 }

@@ -31,6 +31,7 @@ impl ToTokenStream for Expr {
             Expr::Star(b) => b.to_token_stream(w),
             Expr::Distinct(b) => b.to_token_stream(w),
             Expr::ParameterExpr(b) => b.to_token_stream(w),
+            Expr::Is(b) => b.to_token_stream(w),
         }
     }
 }
@@ -287,6 +288,20 @@ impl ToTokenStream for ParameterExpr {
         w.extend(
             FunctionCallTokens::new(self.block.span(), &["typed_qb", "expr", "Parameter"])
                 .arg(self.block.to_token_stream()),
+        );
+    }
+}
+
+impl ToTokenStream for Is {
+    fn to_token_stream(&self, w: &mut TokenStream) {
+        self.kind.to_token_stream(w);
+        let mut e = TokenStream::new();
+        self.expr.to_token_stream(&mut e);
+
+        w.extend(
+            [
+                TokenTree::Group(Group::new(Delimiter::Parenthesis, e)),
+            ]
         );
     }
 }

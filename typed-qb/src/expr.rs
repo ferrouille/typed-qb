@@ -421,6 +421,46 @@ where
 }
 
 #[derive(Debug)]
+pub struct IsNull<X: Value>(pub X);
+impl<X: Value> Value for IsNull<X>
+{
+    type Ty = SimpleTy<Bool, NonNullable>;
+    type Grouped = X::Grouped;
+}
+
+#[derive(Debug)]
+pub struct IsNotNull<X: Value>(pub X);
+impl<X: Value> Value for IsNotNull<X>
+{
+    type Ty = SimpleTy<Bool, NonNullable>;
+    type Grouped = X::Grouped;
+}
+
+#[derive(Debug)]
+pub struct IsTrue<X: Value>(pub X);
+impl<X: Value> Value for IsTrue<X>
+{
+    type Ty = SimpleTy<Bool, NonNullable>;
+    type Grouped = X::Grouped;
+}
+
+#[derive(Debug)]
+pub struct IsFalse<X: Value>(pub X);
+impl<X: Value> Value for IsFalse<X>
+{
+    type Ty = SimpleTy<Bool, NonNullable>;
+    type Grouped = X::Grouped;
+}
+
+#[derive(Debug)]
+pub struct IsUnknown<X: Value>(pub X);
+impl<X: Value> Value for IsUnknown<X>
+{
+    type Ty = SimpleTy<Bool, NonNullable>;
+    type Grouped = X::Grouped;
+}
+
+#[derive(Debug)]
 pub struct Neg<X: Value>(pub X);
 impl<X: Value> Value for Neg<X> {
     // TODO:Should this become signed?
@@ -610,6 +650,33 @@ gen_unary_ops! {
     Not<X> => "NOT",
     Neg<X> => "-",
     BitNeg<X> => "~",
+}
+
+
+macro_rules! gen_postfix_unary_ops {
+    ($($t:ty => $op:literal),* $(,)*) => {
+        $(
+            impl<X: Value + ToSql> ToSql for $t {
+                const SQL: ConstSqlStr = $crate::sql_concat!("(", X, ") ", $op);
+
+                fn collect_parameters(&self, params: &mut Vec<QueryValue>) {
+                    self.0.collect_parameters(params)
+                }
+            }
+
+            impl<U: Up, X: Value + QueryTree<U>> QueryTree<U> for $t {
+                type MaxUp = X::MaxUp;
+            }
+        )*
+    }
+}
+
+gen_postfix_unary_ops! {
+    IsNull<X> => "IS NULL",
+    IsNotNull<X> => "IS NOT NULL",
+    IsTrue<X> => "IS TRUE",
+    IsFalse<X> => "IS FALSE",
+    IsUnknown<X> => "IS UNKNOWN",
 }
 
 impl<const N: i64> ToSql for ConstI64<N> {

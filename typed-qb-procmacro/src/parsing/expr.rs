@@ -242,6 +242,11 @@ crate::parsing::gen_wrapper! {
             pub(crate) keyword: Ident,
             pub(crate) expr: Box<Expr>,
         },
+        Is {
+            pub(crate) is: Ident,
+            pub(crate) kind: IsKind,
+            pub(crate) expr: Box<Expr>,
+        },
         // TODO: ANY (subquery); ALL (subquery)
         // TODO: IN (list); IN (subquery)
         // TODO: EXISTS
@@ -277,24 +282,6 @@ impl Parse for BinOp {
             input.parse().map(BinOp::CmpLt)
         } else if input.peek(Token!(!=)) {
             input.parse().map(BinOp::CmpNe)
-        } else if let Ok(ident) = parse_keyword("IS", &input) {
-            Ok(BinOp::CmpIs(
-                ident,
-                if let Ok(ident) = parse_keyword("NULL", &input) {
-                    IsKind::Null(ident)
-                } else if let Ok(ident) = parse_keyword("NOT", &input) {
-                    let ident2 = parse_keyword("NULL", &input)?;
-                    IsKind::NotNull(ident, ident2)
-                } else if let Ok(ident) = parse_keyword("TRUE", &input) {
-                    IsKind::True(ident)
-                } else if let Ok(ident) = parse_keyword("FALSE", &input) {
-                    IsKind::False(ident)
-                } else if let Ok(ident) = parse_keyword("UNKNOWN", &input) {
-                    IsKind::Unknown(ident)
-                } else {
-                    return Err(input.error("expected NULL, NOT NULL, TRUE, FALSE, UNKNOWN"));
-                },
-            ))
         } else if let Ok(ident) = parse_keyword("LIKE", &input) {
             Ok(BinOp::CmpLike(ident))
         } else if input.peek(Token!(|)) {
@@ -376,7 +363,7 @@ fn peek_precedence(input: ParseStream) -> Precedence {
 }
 
 fn parse_unary_expr(input: ParseStream) -> syn::Result<Expr> {
-    if input.peek(Lit) {
+    let expr = if input.peek(Lit) {
         input.parse().map(Expr::Value)
     } else if input.peek(Token![!]) {
         let expr = parse_at_precedence(input, Precedence::Bang)?;
@@ -456,6 +443,29 @@ fn parse_unary_expr(input: ParseStream) -> syn::Result<Expr> {
         Ok(Expr::Rust(Rust { block }))
     } else {
         Err(input.error("expected a unary expression"))
+    }?;
+
+    if let Ok(ident) = parse_keyword("IS", &input) {
+        Ok(Expr::Is(Is {
+            is: ident,
+            kind: if let Ok(ident) = parse_keyword("NULL", &input) {
+                IsKind::Null(ident)
+            } else if let Ok(ident) = parse_keyword("NOT", &input) {
+                let ident2 = parse_keyword("NULL", &input)?;
+                IsKind::NotNull(ident, ident2)
+            } else if let Ok(ident) = parse_keyword("TRUE", &input) {
+                IsKind::True(ident)
+            } else if let Ok(ident) = parse_keyword("FALSE", &input) {
+                IsKind::False(ident)
+            } else if let Ok(ident) = parse_keyword("UNKNOWN", &input) {
+                IsKind::Unknown(ident)
+            } else {
+                return Err(input.error("expected NULL, NOT NULL, TRUE, FALSE, UNKNOWN"));
+            },
+            expr: Box::new(expr),
+        }))
+    } else {
+        Ok(expr)
     }
 }
 
