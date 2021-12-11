@@ -144,7 +144,6 @@ impl ToTokenStream for BinOp {
             BinOp::CmpLe(s) => ("CmpLe", s.span()),
             BinOp::CmpLt(s) => ("CmpLt", s.span()),
             BinOp::CmpNe(s) => ("CmpNe", s.span()),
-            BinOp::CmpIs(_, kind) => return kind.to_token_stream(w),
             BinOp::CmpLike(s) => ("CmpLike", s.span()),
             BinOp::BitOr(s) => ("BitOr", s.span()),
             BinOp::BitAnd(s) => ("BitAnd", s.span()),

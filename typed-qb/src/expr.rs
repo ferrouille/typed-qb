@@ -116,6 +116,15 @@ impl ParameterValue for i32 {
     }
 }
 
+impl ParameterValue for bool {
+    type Ty = Bool;
+    type Nullable = NonNullable;
+
+    fn to_param(&self) -> QueryValue {
+        QueryValue::I64(if *self { 1 } else { 0 })
+    }
+}
+
 impl ParameterValue for String {
     type Ty = Text;
     type Nullable = NonNullable;

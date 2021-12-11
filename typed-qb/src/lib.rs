@@ -1610,8 +1610,8 @@ pub mod __doctest {
             )
         }
 
-        fn typed_exec<'a, Q: QueryRoot>(&'a mut self, _query: Q) -> Result<(), ::mysql::Error> {
-            Ok(())
+        fn typed_exec<'a, Q: QueryRoot>(&'a mut self, _query: Q) -> Result<usize, ::mysql::Error> {
+            Ok(0)
         }
     }
 

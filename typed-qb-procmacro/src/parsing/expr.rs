@@ -1,7 +1,6 @@
 use crate::parsing::parse_keyword;
 use proc_macro2::{Ident, Span, TokenStream};
 use std::fmt;
-use std::fmt::Write;
 use syn::{
     ext::IdentExt,
     parse::{Parse, ParseStream},
@@ -51,7 +50,6 @@ pub enum BinOp {
     CmpLe(Token!(<=)),
     CmpLt(Token!(<)),
     CmpNe(Token!(!=)),
-    CmpIs(Ident, IsKind),
     CmpLike(Ident),
     BitOr(Token!(|)),
     BitAnd(Token!(&)),
@@ -67,10 +65,7 @@ pub enum BinOp {
 
 impl fmt::Debug for BinOp {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut s;
-        write!(
-            f,
-            "{}",
+        f.write_str(
             match self {
                 BinOp::Or(_) => "OR",
                 BinOp::Xor(_) => "XOR",
@@ -82,11 +77,6 @@ impl fmt::Debug for BinOp {
                 BinOp::CmpLe(_) => "<=",
                 BinOp::CmpLt(_) => "<",
                 BinOp::CmpNe(_) => "!=",
-                BinOp::CmpIs(_, kind) => {
-                    s = String::new();
-                    write!(&mut s, "IS {}", kind)?;
-                    &s
-                }
                 BinOp::CmpLike(_) => "LIKE",
                 BinOp::BitOr(_) => "|",
                 BinOp::BitAnd(_) => "&",
@@ -155,7 +145,6 @@ impl BinOp {
             | BinOp::CmpLe(..)
             | BinOp::CmpLt(..)
             | BinOp::CmpNe(..)
-            | BinOp::CmpIs(..)
             | BinOp::CmpLike(..) => Precedence::Comparison,
             BinOp::BitOr(..) => Precedence::BitOr,
             BinOp::BitAnd(..) => Precedence::BitAnd,
