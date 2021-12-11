@@ -1,6 +1,6 @@
 use crate::{
     expr::{Distinct, Value, ValueOrStar},
-    typing::{BigInt, Grouped, NonNullable, Nullable, Signed, SimpleTy, Ty, Unsigned},
+    typing::{BigInt, Grouped, NonNullable, Nullable, Signed, SimpleTy, Ty, Unsigned, F64, Undetermined},
     ConstSqlStr, QueryTree, ToSql, Up,
 };
 
@@ -121,4 +121,27 @@ impl<V: ValueStarOrDistinct + ToSql> ToSql for Count<V> {
     fn collect_parameters(&self, f: &mut Vec<crate::QueryValue>) {
         self.of.collect_parameters(f)
     }
+}
+
+#[derive(Debug, Clone)]
+pub struct Rand;
+
+impl<U: Up> QueryTree<U> for Rand {
+    type MaxUp = U;
+}
+
+#[allow(non_snake_case)]
+pub fn RAND() -> Rand {
+    Rand
+}
+
+impl Value for Rand {
+    type Ty = SimpleTy<F64, NonNullable>;
+    type Grouped = Undetermined;
+}
+
+impl ToSql for Rand {
+    const SQL: ConstSqlStr = crate::sql_concat!("RAND()");
+
+    fn collect_parameters(&self, _f: &mut Vec<crate::QueryValue>) { }
 }
