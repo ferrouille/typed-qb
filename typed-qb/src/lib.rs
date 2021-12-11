@@ -470,6 +470,7 @@ pub mod __private {
         }
     }
 }
+
 pub trait QueryRoot: QueryTree<UpEnd> + ToSql {}
 
 pub trait Up {
@@ -568,8 +569,11 @@ impl<T: Ty, A: TableAlias, N: FieldName> Field<T, A, N> {
 
 impl<T: Ty, A: TableAlias, N: FieldName> ToSql for Field<T, A, N> {
     const SQL: ConstSqlStr = sql_concat!((A::PREFIX), "`", (N::NAME), "`");
+    const NUM_PARAMS: usize = 0;
 
-    fn collect_parameters(&self, _params: &mut Vec<QueryValue>) {}
+    fn collect_parameters<'a>(&self, params: &'a mut [QueryValue]) -> &'a mut [QueryValue] {
+        params
+    }
 }
 
 /// Represents a table. All fields of the table can be accessed via struct fields.
@@ -1108,13 +1112,16 @@ macro_rules! data {
                     ", ", $key, " AS `", (<$crate::UniqueFieldName::<$alias> as $crate::FieldName>::NAME), "`"
                 ),+)?
             );
+            const NUM_PARAMS: usize = $firstkey::NUM_PARAMS $($(+ $key::NUM_PARAMS)+)?;
 
-            fn collect_parameters(&self, params: &mut Vec<$crate::QueryValue>) {
-                self.$firstkey.collect_parameters(params);
+            fn collect_parameters<'a>(&self, params: &'a mut [$crate::QueryValue]) -> &'a mut [$crate::QueryValue] {
+                let params = self.$firstkey.collect_parameters(params);
 
                 $($(
-                    self.$key.collect_parameters(params);
+                    let params = self.$key.collect_parameters(params);
                 )+)?
+
+                params
             }
         }
     };
@@ -1476,8 +1483,11 @@ macro_rules! table {
                 .append_str(stringify!($name))
                 .append_str("`")
             ;
+            const NUM_PARAMS: usize = 0;
 
-            fn collect_parameters(&self, _: &mut Vec<$crate::QueryValue>) {}
+            fn collect_parameters<'a>(&self, params: &'a mut [$crate::QueryValue]) -> &'a mut [$crate::QueryValue]  {
+                params
+            }
         }
 
         impl<U: $crate::Up, A: $crate::TableAlias, N: $crate::typing::NullabilityModifier> $crate::QueryTree<U> for $name<A, N> {
@@ -1537,12 +1547,13 @@ pub trait WithField<const NAME: &'static str> {
 pub trait ToSql {
     const SQL: ConstSqlStr;
     const SQL_STR: &'static str = Self::SQL.as_str();
+    const NUM_PARAMS: usize;
 
     fn sql_str(&self) -> &'static str {
         Self::SQL_STR
     }
 
-    fn collect_parameters(&self, f: &mut Vec<QueryValue>);
+    fn collect_parameters<'a>(&self, f: &'a mut [QueryValue]) -> &'a mut [QueryValue];
 }
 
 #[doc(hidden)]

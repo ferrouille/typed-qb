@@ -1,6 +1,6 @@
 use crate::{
     select::{ExactlyOne, FromRow, RowKind, SelectQuery, SelectedData, ZeroOrMore, ZeroOrOne},
-    QueryRoot, QueryValue,
+    QueryRoot, QueryValue, ToSql,
 };
 use log::{debug, trace};
 use mysql::{prelude::Queryable, Binary, QueryResult, Value};
@@ -73,6 +73,8 @@ pub trait Database {
     fn typed_exec<'a, Q: QueryRoot>(&'a mut self, query: Q) -> Result<usize, mysql::Error>;
 }
 
+const NULL: QueryValue = QueryValue::Null;
+
 pub struct ResultIter<'c, 't, 'tc, Q> {
     iter: QueryResult<'c, 't, 'tc, Binary>,
     _phantom: PhantomData<Q>,
@@ -87,7 +89,6 @@ where
     fn next(&mut self) -> Option<Self::Item> {
         self.iter.next().map(|result| {
             result.map(|mut row| {
-                const NULL: QueryValue = QueryValue::Null;
                 // TODO: Make this an array once rust supports it (currently gives an ICE)
                 let mut data = vec![NULL; <Q::Columns as SelectedData>::NUM_COLS];
                 for (index, value) in data.iter_mut().enumerate() {
@@ -166,7 +167,9 @@ impl From<crate::Time> for Value {
     }
 }
 
-fn into_params(values: Vec<QueryValue>) -> Vec<Value> {
+fn into_params<I: IntoIterator<Item = QueryValue>>(values: I) -> Vec<Value> {
+    // Unfortunately we have to create a Vec here because the mysql library expects the parameters as a Vec.
+    // If we pass something other than a Vec, the mysql crate will allocate one for us.
     values
         .into_iter()
         .map(|p| match p {
@@ -207,8 +210,8 @@ where
         <Q as SelectQuery>::Rows:
             CollectResults<<Q::Columns as FromRow>::Queried, Self::Iter<'a, Q>>,
     {
-        // Unfortunately this has to be a Vec<T> because the mysql crate internally uses a vec
-        let mut params = Vec::new();
+        // TODO: Make this an array once rust supports it (currently gives an ICE)
+        let mut params = vec![NULL; Q::NUM_PARAMS];
         query.collect_parameters(&mut params);
 
         debug!("Running query: {} with params: {:?}", Q::SQL_STR, params);
@@ -221,8 +224,8 @@ where
     }
 
     fn typed_exec<'a, Q: QueryRoot>(&'a mut self, query: Q) -> Result<usize, mysql::Error> {
-        // Unfortunately this has to be a Vec<T> because the mysql crate internally uses a vec
-        let mut params = Vec::new();
+        // TODO: Make this an array once rust supports it (currently gives an ICE)
+        let mut params = vec![NULL; Q::NUM_PARAMS];
         query.collect_parameters(&mut params);
 
         debug!("Running query: {} with params: {:?}", Q::SQL_STR, params);

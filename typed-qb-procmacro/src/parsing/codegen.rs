@@ -297,11 +297,7 @@ impl ToTokenStream for Is {
         let mut e = TokenStream::new();
         self.expr.to_token_stream(&mut e);
 
-        w.extend(
-            [
-                TokenTree::Group(Group::new(Delimiter::Parenthesis, e)),
-            ]
-        );
+        w.extend([TokenTree::Group(Group::new(Delimiter::Parenthesis, e))]);
     }
 }
 

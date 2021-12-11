@@ -431,40 +431,35 @@ where
 
 #[derive(Debug)]
 pub struct IsNull<X: Value>(pub X);
-impl<X: Value> Value for IsNull<X>
-{
+impl<X: Value> Value for IsNull<X> {
     type Ty = SimpleTy<Bool, NonNullable>;
     type Grouped = X::Grouped;
 }
 
 #[derive(Debug)]
 pub struct IsNotNull<X: Value>(pub X);
-impl<X: Value> Value for IsNotNull<X>
-{
+impl<X: Value> Value for IsNotNull<X> {
     type Ty = SimpleTy<Bool, NonNullable>;
     type Grouped = X::Grouped;
 }
 
 #[derive(Debug)]
 pub struct IsTrue<X: Value>(pub X);
-impl<X: Value> Value for IsTrue<X>
-{
+impl<X: Value> Value for IsTrue<X> {
     type Ty = SimpleTy<Bool, NonNullable>;
     type Grouped = X::Grouped;
 }
 
 #[derive(Debug)]
 pub struct IsFalse<X: Value>(pub X);
-impl<X: Value> Value for IsFalse<X>
-{
+impl<X: Value> Value for IsFalse<X> {
     type Ty = SimpleTy<Bool, NonNullable>;
     type Grouped = X::Grouped;
 }
 
 #[derive(Debug)]
 pub struct IsUnknown<X: Value>(pub X);
-impl<X: Value> Value for IsUnknown<X>
-{
+impl<X: Value> Value for IsUnknown<X> {
     type Ty = SimpleTy<Bool, NonNullable>;
     type Grouped = X::Grouped;
 }
@@ -601,10 +596,11 @@ macro_rules! gen_bin_ops {
         $(
             impl<X: Value + ToSql, Y: Value + ToSql> ToSql for $t {
                 const SQL: ConstSqlStr = $crate::sql_concat!("(", X, " ", $op, " ", Y, ")");
+                const NUM_PARAMS: usize = X::NUM_PARAMS + Y::NUM_PARAMS;
 
-                fn collect_parameters(&self, params: &mut Vec<QueryValue>) {
-                    self.0.collect_parameters(params);
-                    self.1.collect_parameters(params);
+                fn collect_parameters<'a>(&self, params: &'a mut [QueryValue]) -> &'a mut [QueryValue]   {
+                    let params = self.0.collect_parameters(params);
+                    self.1.collect_parameters(params)
                 }
             }
 
@@ -646,8 +642,9 @@ macro_rules! gen_unary_ops {
         $(
             impl<X: Value + ToSql> ToSql for $t {
                 const SQL: ConstSqlStr = $crate::sql_concat!($op, " (", X, ")");
+                const NUM_PARAMS: usize = X::NUM_PARAMS;
 
-                fn collect_parameters(&self, params: &mut Vec<QueryValue>) {
+                fn collect_parameters<'a>(&self, params: &'a mut [QueryValue]) -> &'a mut [QueryValue]  {
                     self.0.collect_parameters(params)
                 }
             }
@@ -661,14 +658,14 @@ gen_unary_ops! {
     BitNeg<X> => "~",
 }
 
-
 macro_rules! gen_postfix_unary_ops {
     ($($t:ty => $op:literal),* $(,)*) => {
         $(
             impl<X: Value + ToSql> ToSql for $t {
                 const SQL: ConstSqlStr = $crate::sql_concat!("(", X, ") ", $op);
+                const NUM_PARAMS: usize = X::NUM_PARAMS;
 
-                fn collect_parameters(&self, params: &mut Vec<QueryValue>) {
+                fn collect_parameters<'a>(&self, params: &'a mut [QueryValue]) -> &'a mut [QueryValue]  {
                     self.0.collect_parameters(params)
                 }
             }
@@ -690,27 +687,38 @@ gen_postfix_unary_ops! {
 
 impl<const N: i64> ToSql for ConstI64<N> {
     const SQL: ConstSqlStr = ConstSqlStr::empty().append_i64(N);
+    const NUM_PARAMS: usize = 0;
 
-    fn collect_parameters(&self, _params: &mut Vec<QueryValue>) {}
+    fn collect_parameters<'a>(&self, params: &'a mut [QueryValue]) -> &'a mut [QueryValue] {
+        params
+    }
 }
 
 impl<const N: u64> ToSql for ConstU64<N> {
     const SQL: ConstSqlStr = ConstSqlStr::empty().append_u64(N);
+    const NUM_PARAMS: usize = 0;
 
-    fn collect_parameters(&self, _params: &mut Vec<QueryValue>) {}
+    fn collect_parameters<'a>(&self, params: &'a mut [QueryValue]) -> &'a mut [QueryValue] {
+        params
+    }
 }
 
 impl<const S: &'static str> ToSql for ConstStr<S> {
     const SQL: ConstSqlStr = ConstSqlStr::empty().append_quoted_str(S);
+    const NUM_PARAMS: usize = 0;
 
-    fn collect_parameters(&self, _params: &mut Vec<QueryValue>) {}
+    fn collect_parameters<'a>(&self, params: &'a mut [QueryValue]) -> &'a mut [QueryValue] {
+        params
+    }
 }
 
 impl<P: ParameterValue> ToSql for Parameter<P> {
     const SQL: ConstSqlStr = ConstSqlStr::new("?");
+    const NUM_PARAMS: usize = 1;
 
-    fn collect_parameters(&self, params: &mut Vec<QueryValue>) {
-        params.push(self.0.to_param())
+    fn collect_parameters<'a>(&self, params: &'a mut [QueryValue]) -> &'a mut [QueryValue] {
+        params[0] = self.0.to_param();
+        &mut params[1..]
     }
 }
 
@@ -726,8 +734,11 @@ impl ValueOrStar for Star {}
 
 impl ToSql for Star {
     const SQL: ConstSqlStr = ConstSqlStr::new("*");
+    const NUM_PARAMS: usize = 0;
 
-    fn collect_parameters(&self, _f: &mut Vec<QueryValue>) {}
+    fn collect_parameters<'a>(&self, params: &'a mut [QueryValue]) -> &'a mut [QueryValue] {
+        params
+    }
 }
 
 impl<U: Up> QueryTree<U> for Star {
@@ -736,9 +747,10 @@ impl<U: Up> QueryTree<U> for Star {
 
 impl<X: ValueOrStar + ToSql> ToSql for Distinct<X> {
     const SQL: ConstSqlStr = sql_concat!("DISTINCT ", X);
+    const NUM_PARAMS: usize = 0;
 
-    fn collect_parameters(&self, f: &mut Vec<QueryValue>) {
-        self.0.collect_parameters(f)
+    fn collect_parameters<'a>(&self, params: &'a mut [QueryValue]) -> &'a mut [QueryValue] {
+        self.0.collect_parameters(params)
     }
 }
 
@@ -776,8 +788,11 @@ mod test {
 
     impl<T: Ty> ToSql for V<T> {
         const SQL: ConstSqlStr = ConstSqlStr::new("v");
+        const NUM_PARAMS: usize = 0;
 
-        fn collect_parameters(&self, _params: &mut Vec<QueryValue>) {}
+        fn collect_parameters<'a>(&self, params: &'a mut [QueryValue]) -> &'a mut [QueryValue] {
+            params
+        }
     }
 
     fn is_value_noargs<V: Value>() {}

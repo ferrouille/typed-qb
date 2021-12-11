@@ -106,8 +106,11 @@ impl<U: Up> QueryTree<U> for NilTable {
 
 impl ToSql for NilTable {
     const SQL: ConstSqlStr = ConstSqlStr::empty();
+    const NUM_PARAMS: usize = 0;
 
-    fn collect_parameters(&self, _f: &mut Vec<QueryValue>) {}
+    fn collect_parameters<'a>(&self, params: &'a mut [QueryValue]) -> &'a mut [QueryValue] {
+        params
+    }
 }
 
 pub trait PartialSelect<D: SelectedData, L: AnyLimit> {
@@ -174,17 +177,23 @@ impl<D: SelectedData, L: AnyLimit, F: FromTables> TableReference for Select<D, L
 
 impl<D: SelectedData, L: AnyLimit, F: FromTables> FromTables for Select<D, L, F> {}
 
-
 pub struct SelectAsValue<S: SelectQuery<Rows = ExactlyOne>>(S);
 
-impl<D: SelectedData, L: AnyLimit, F: FromTables> Select<D, L, F> 
-    where Self: SelectQuery<Rows = ExactlyOne> {
+impl<D: SelectedData, L: AnyLimit, F: FromTables> Select<D, L, F>
+where
+    Self: SelectQuery<Rows = ExactlyOne>,
+{
     pub fn as_value(self) -> SelectAsValue<Self> {
         SelectAsValue(self)
     }
 }
 
-impl<T: Ty, D: SelectedData + SingleColumnSelectedData<ColumnTy = T>, S: SelectQuery<Rows = ExactlyOne, Columns = D>> Value for SelectAsValue<S> {
+impl<
+        T: Ty,
+        D: SelectedData + SingleColumnSelectedData<ColumnTy = T>,
+        S: SelectQuery<Rows = ExactlyOne, Columns = D>,
+    > Value for SelectAsValue<S>
+{
     type Ty = T;
     type Grouped = Undetermined;
 }
@@ -195,9 +204,10 @@ impl<U: Up, S: SelectQuery<Rows = ExactlyOne> + QueryTree<U>> QueryTree<U> for S
 
 impl<S: SelectQuery<Rows = ExactlyOne> + ToSql> ToSql for SelectAsValue<S> {
     const SQL: ConstSqlStr = sql_concat!("(", S, ")");
+    const NUM_PARAMS: usize = S::NUM_PARAMS;
 
-    fn collect_parameters(&self, f: &mut Vec<QueryValue>) {
-        self.0.collect_parameters(f)
+    fn collect_parameters<'a>(&self, params: &'a mut [QueryValue]) -> &'a mut [QueryValue] {
+        self.0.collect_parameters(params)
     }
 }
 
@@ -379,11 +389,12 @@ impl<D: SelectedData + ToSql, L: AnyLimit + ToSql, F: FromTables + ToSql> ToSql
     for Select<D, L, F>
 {
     const SQL: ConstSqlStr = crate::sql_concat!("(SELECT ", D, F, " ", L, ")");
+    const NUM_PARAMS: usize = D::NUM_PARAMS + F::NUM_PARAMS + L::NUM_PARAMS;
 
-    fn collect_parameters(&self, f: &mut Vec<QueryValue>) {
-        self.select.data.collect_parameters(f);
-        self.from.collect_parameters(f);
-        self.select.query.collect_parameters(f);
+    fn collect_parameters<'a>(&self, params: &'a mut [QueryValue]) -> &'a mut [QueryValue] {
+        let params = self.select.data.collect_parameters(params);
+        let params = self.from.collect_parameters(params);
+        self.select.query.collect_parameters(params)
     }
 }
 
@@ -430,10 +441,11 @@ impl<D: SelectedData, L: AnyLimit> SelectQuery for SelectWithoutFrom<D, L> {
 
 impl<D: SelectedData + ToSql, L: AnyLimit + ToSql> ToSql for SelectWithoutFrom<D, L> {
     const SQL: ConstSqlStr = crate::sql_concat!("(SELECT ", D, " ", L, ")");
+    const NUM_PARAMS: usize = D::NUM_PARAMS + L::NUM_PARAMS;
 
-    fn collect_parameters(&self, f: &mut Vec<QueryValue>) {
-        self.data.collect_parameters(f);
-        self.query.collect_parameters(f);
+    fn collect_parameters<'a>(&self, params: &'a mut [QueryValue]) -> &'a mut [QueryValue] {
+        let params = self.data.collect_parameters(params);
+        self.query.collect_parameters(params)
     }
 }
 
@@ -552,9 +564,10 @@ impl<U: Up, T: Fieldable + QueryTree<UpOne<U>>, M: NullabilityModifier> QueryTre
 
 impl<T: Fieldable + ToSql, U: Up, M: NullabilityModifier> ToSql for SingleColumn<T, U, M> {
     const SQL: ConstSqlStr = sql_concat!(T, " AS `", (UniqueFieldName::<U>::NAME), "`");
+    const NUM_PARAMS: usize = T::NUM_PARAMS;
 
-    fn collect_parameters(&self, f: &mut Vec<QueryValue>) {
-        self.value.collect_parameters(f)
+    fn collect_parameters<'a>(&self, params: &'a mut [QueryValue]) -> &'a mut [QueryValue] {
+        self.value.collect_parameters(params)
     }
 }
 
@@ -609,11 +622,12 @@ impl<A: TableAlias, T: TableReference, F: FromTables> FromTables for BaseTable<A
 
 impl<A: TableAlias, T: TableReference + ToSql, F: FromTables + ToSql> ToSql for BaseTable<A, T, F> {
     const SQL: ConstSqlStr = crate::sql_concat!(" FROM ", T, " AS ", (A::NAME), F);
+    const NUM_PARAMS: usize = T::NUM_PARAMS + F::NUM_PARAMS;
 
-    fn collect_parameters(&self, f: &mut Vec<QueryValue>) {
+    fn collect_parameters<'a>(&self, params: &'a mut [QueryValue]) -> &'a mut [QueryValue] {
         debug!("BaseTable {} with alias {}", T::SQL_STR, A::NAME,);
-        self.table.collect_parameters(f);
-        self.next.collect_parameters(f);
+        let params = self.table.collect_parameters(params);
+        self.next.collect_parameters(params)
     }
 }
 
@@ -658,12 +672,13 @@ impl<A: TableAlias, N: TableReference + ToSql, V: Value + ToSql, F: FromTables +
     for LeftJoin<A, N, V, F>
 {
     const SQL: ConstSqlStr = crate::sql_concat!(" LEFT JOIN ", N, " AS ", (A::NAME), " ON ", V, F);
+    const NUM_PARAMS: usize = N::NUM_PARAMS + V::NUM_PARAMS + F::NUM_PARAMS;
 
-    fn collect_parameters(&self, f: &mut Vec<QueryValue>) {
+    fn collect_parameters<'a>(&self, params: &'a mut [QueryValue]) -> &'a mut [QueryValue] {
         debug!("LEFT JOIN with alias {}", A::NAME);
-        self.table.collect_parameters(f);
-        self.condition.collect_parameters(f);
-        self.next.collect_parameters(f);
+        let params = self.table.collect_parameters(params);
+        let params = self.condition.collect_parameters(params);
+        self.next.collect_parameters(params)
     }
 }
 
@@ -707,12 +722,13 @@ impl<A: TableAlias, N: TableReference + ToSql, V: Value + ToSql, F: FromTables +
     for InnerJoin<A, N, V, F>
 {
     const SQL: ConstSqlStr = crate::sql_concat!(" INNER JOIN ", N, " AS ", (A::NAME), " ON ", V, F);
+    const NUM_PARAMS: usize = N::NUM_PARAMS + V::NUM_PARAMS + F::NUM_PARAMS;
 
-    fn collect_parameters(&self, f: &mut Vec<QueryValue>) {
+    fn collect_parameters<'a>(&self, params: &'a mut [QueryValue]) -> &'a mut [QueryValue] {
         debug!("INNER JOIN with alias {}", A::NAME);
-        self.table.collect_parameters(f);
-        self.condition.collect_parameters(f);
-        self.next.collect_parameters(f);
+        let params = self.table.collect_parameters(params);
+        let params = self.condition.collect_parameters(params);
+        self.next.collect_parameters(params)
     }
 }
 

@@ -244,14 +244,20 @@ impl Direction for Desc {}
 
 impl ToSql for Asc {
     const SQL: ConstSqlStr = ConstSqlStr::new("ASC");
+    const NUM_PARAMS: usize = 0;
 
-    fn collect_parameters(&self, _f: &mut Vec<QueryValue>) {}
+    fn collect_parameters<'a>(&self, params: &'a mut [QueryValue]) -> &'a mut [QueryValue] {
+        params
+    }
 }
 
 impl ToSql for Desc {
     const SQL: ConstSqlStr = ConstSqlStr::new("DESC");
+    const NUM_PARAMS: usize = 0;
 
-    fn collect_parameters(&self, _f: &mut Vec<QueryValue>) {}
+    fn collect_parameters<'a>(&self, params: &'a mut [QueryValue]) -> &'a mut [QueryValue] {
+        params
+    }
 }
 
 impl fmt::Display for Asc {
@@ -377,8 +383,11 @@ impl ModifyRows for ParameterLimit {
 
 impl<const N: usize> ToSql for ConstLimit<N> {
     const SQL: ConstSqlStr = ConstSqlStr::empty().append_usize(N);
+    const NUM_PARAMS: usize = 0;
 
-    fn collect_parameters(&self, _f: &mut Vec<QueryValue>) {}
+    fn collect_parameters<'a>(&self, params: &'a mut [QueryValue]) -> &'a mut [QueryValue] {
+        params
+    }
 }
 
 impl<U: Up, const N: usize> QueryTree<U> for ConstLimit<N> {
@@ -390,8 +399,11 @@ impl<const OFFSET: usize, const N: usize> ToSql for ConstOffsetAndLimit<OFFSET, 
         .append_usize(OFFSET)
         .append_str(", ")
         .append_usize(N);
+    const NUM_PARAMS: usize = 0;
 
-    fn collect_parameters(&self, _f: &mut Vec<QueryValue>) {}
+    fn collect_parameters<'a>(&self, params: &'a mut [QueryValue]) -> &'a mut [QueryValue] {
+        params
+    }
 }
 
 impl<U: Up, const OFFSET: usize, const N: usize> QueryTree<U> for ConstOffsetAndLimit<OFFSET, N> {
@@ -400,10 +412,11 @@ impl<U: Up, const OFFSET: usize, const N: usize> QueryTree<U> for ConstOffsetAnd
 
 impl ToSql for ParameterOffsetAndLimit {
     const SQL: ConstSqlStr = crate::sql_concat!([Parameter::<usize>], ", ", [Parameter::<usize>]);
+    const NUM_PARAMS: usize = 2;
 
-    fn collect_parameters(&self, f: &mut Vec<QueryValue>) {
-        self.0.collect_parameters(f);
-        self.1.collect_parameters(f);
+    fn collect_parameters<'a>(&self, params: &'a mut [QueryValue]) -> &'a mut [QueryValue] {
+        let params = self.0.collect_parameters(params);
+        self.1.collect_parameters(params)
     }
 }
 
@@ -417,9 +430,10 @@ where
 
 impl ToSql for ParameterLimit {
     const SQL: ConstSqlStr = crate::sql_concat!([Parameter::<usize>]);
+    const NUM_PARAMS: usize = 1;
 
-    fn collect_parameters(&self, f: &mut Vec<QueryValue>) {
-        self.0.collect_parameters(f);
+    fn collect_parameters<'a>(&self, params: &'a mut [QueryValue]) -> &'a mut [QueryValue] {
+        self.0.collect_parameters(params)
     }
 }
 
@@ -442,76 +456,87 @@ impl<I: AnyOrderedBy, L: LimitValue> ModifyRows for Limit<I, L> {
 
 impl ToSql for AllRows {
     const SQL: ConstSqlStr = ConstSqlStr::empty();
+    const NUM_PARAMS: usize = 0;
 
-    fn collect_parameters(&self, _: &mut Vec<QueryValue>) {}
+    fn collect_parameters<'a>(&self, params: &'a mut [QueryValue]) -> &'a mut [QueryValue] {
+        params
+    }
 }
 
 impl<V: Value + ToSql> ToSql for Where<V> {
     const SQL: ConstSqlStr = crate::sql_concat!("WHERE ", V);
+    const NUM_PARAMS: usize = V::NUM_PARAMS;
 
-    fn collect_parameters(&self, f: &mut Vec<QueryValue>) {
-        self.condition.collect_parameters(f);
+    fn collect_parameters<'a>(&self, params: &'a mut [QueryValue]) -> &'a mut [QueryValue] {
+        self.condition.collect_parameters(params)
     }
 }
 
 impl<I: AnyWhere + ToSql, V: Value + ToSql> ToSql for GroupBy<I, V> {
     const SQL: ConstSqlStr = crate::sql_concat!(I, " GROUP BY ", V);
+    const NUM_PARAMS: usize = V::NUM_PARAMS;
 
-    fn collect_parameters(&self, f: &mut Vec<QueryValue>) {
-        self.inner.collect_parameters(f);
-        self.values.collect_parameters(f);
+    fn collect_parameters<'a>(&self, params: &'a mut [QueryValue]) -> &'a mut [QueryValue] {
+        let params = self.inner.collect_parameters(params);
+        self.values.collect_parameters(params)
     }
 }
 
 impl<H: Value + ToSql, T: GroupBySeq + ToSql> ToSql for GroupByCons<H, T> {
     const SQL: ConstSqlStr = crate::sql_concat!(T, ", ", H);
+    const NUM_PARAMS: usize = T::NUM_PARAMS + H::NUM_PARAMS;
 
-    fn collect_parameters(&self, params: &mut Vec<QueryValue>) {
-        self.tail.collect_parameters(params);
-        self.head.collect_parameters(params);
+    fn collect_parameters<'a>(&self, params: &'a mut [QueryValue]) -> &'a mut [QueryValue] {
+        let params = self.tail.collect_parameters(params);
+        self.head.collect_parameters(params)
     }
 }
 
 impl<I: AnyGroupedBy + ToSql, V: Value + ToSql> ToSql for Having<I, V> {
     const SQL: ConstSqlStr = crate::sql_concat!(I, " HAVING ", V);
+    const NUM_PARAMS: usize = I::NUM_PARAMS + V::NUM_PARAMS;
 
-    fn collect_parameters(&self, f: &mut Vec<QueryValue>) {
-        self.inner.collect_parameters(f);
-        self.value.collect_parameters(f);
+    fn collect_parameters<'a>(&self, params: &'a mut [QueryValue]) -> &'a mut [QueryValue] {
+        let params = self.inner.collect_parameters(params);
+        self.value.collect_parameters(params)
     }
 }
 
 impl<I: AnyHaving + ToSql, S: OrderBySeq + ToSql> ToSql for OrderBy<I, S> {
     const SQL: ConstSqlStr = crate::sql_concat!(I, " ORDER BY ", S);
+    const NUM_PARAMS: usize = I::NUM_PARAMS + S::NUM_PARAMS;
 
-    fn collect_parameters(&self, f: &mut Vec<QueryValue>) {
-        self.inner.collect_parameters(f);
-        self.values.collect_parameters(f);
+    fn collect_parameters<'a>(&self, params: &'a mut [QueryValue]) -> &'a mut [QueryValue] {
+        let params = self.inner.collect_parameters(params);
+        self.values.collect_parameters(params)
     }
 }
 
 impl<H: Value + ToSql, D: Direction + ToSql, S: OrderBySeq + ToSql> ToSql for OrderByCons<H, D, S> {
     const SQL: ConstSqlStr = crate::sql_concat!(S, ", ", [OrderByEntry::<H, D>]);
+    const NUM_PARAMS: usize = S::NUM_PARAMS + OrderByEntry::<H, D>::NUM_PARAMS;
 
-    fn collect_parameters(&self, params: &mut Vec<QueryValue>) {
-        self.tail.collect_parameters(params);
-        self.head.collect_parameters(params);
+    fn collect_parameters<'a>(&self, params: &'a mut [QueryValue]) -> &'a mut [QueryValue] {
+        let params = self.tail.collect_parameters(params);
+        self.head.collect_parameters(params)
     }
 }
 
 impl<H: Value + ToSql, D: Direction + ToSql> ToSql for OrderByEntry<H, D> {
     const SQL: ConstSqlStr = crate::sql_concat!(H, " ", D);
+    const NUM_PARAMS: usize = H::NUM_PARAMS + D::NUM_PARAMS;
 
-    fn collect_parameters(&self, params: &mut Vec<QueryValue>) {
+    fn collect_parameters<'a>(&self, params: &'a mut [QueryValue]) -> &'a mut [QueryValue] {
         self.value.collect_parameters(params)
     }
 }
 
 impl<I: AnyOrderedBy + ToSql, L: LimitValue> ToSql for Limit<I, L> {
     const SQL: ConstSqlStr = crate::sql_concat!(I, " LIMIT ", L);
+    const NUM_PARAMS: usize = I::NUM_PARAMS + L::NUM_PARAMS;
 
-    fn collect_parameters(&self, f: &mut Vec<QueryValue>) {
-        self.inner.collect_parameters(f);
-        self.value.collect_parameters(f);
+    fn collect_parameters<'a>(&self, params: &'a mut [QueryValue]) -> &'a mut [QueryValue] {
+        let params = self.inner.collect_parameters(params);
+        self.value.collect_parameters(params)
     }
 }

@@ -20,8 +20,8 @@
 use crate::expr::Value;
 use crate::typing::Ty;
 use crate::{
-    sql_concat, ConstSqlStr, Field, FieldName, QueryRoot, QueryTree, Table, TableAlias, ToSql, Up,
-    UpEnd,
+    sql_concat, ConstSqlStr, Field, FieldName, QueryRoot, QueryTree, QueryValue, Table, TableAlias,
+    ToSql, Up, UpEnd,
 };
 use std::marker::PhantomData;
 
@@ -77,9 +77,10 @@ impl<T: Table + ToSql, S: ValueList + ToSql> ToSql for Insert<T, S> {
         S,
         ")"
     );
+    const NUM_PARAMS: usize = T::NUM_PARAMS + S::NUM_PARAMS;
 
-    fn collect_parameters(&self, f: &mut Vec<crate::QueryValue>) {
-        self.values.collect_parameters(f);
+    fn collect_parameters<'a>(&self, params: &'a mut [QueryValue]) -> &'a mut [QueryValue] {
+        self.values.collect_parameters(params)
     }
 }
 
@@ -130,19 +131,21 @@ where
     Field<T, A, N>: ToSql,
 {
     const SQL: ConstSqlStr = sql_concat!(V);
+    const NUM_PARAMS: usize = V::NUM_PARAMS;
 
-    fn collect_parameters(&self, f: &mut Vec<crate::QueryValue>) {
-        self.field.collect_parameters(f);
-        self.value.collect_parameters(f);
+    fn collect_parameters<'a>(&self, params: &'a mut [QueryValue]) -> &'a mut [QueryValue] {
+        let params = self.field.collect_parameters(params);
+        self.value.collect_parameters(params)
     }
 }
 
 impl<H: IsValue + ToSql, T: ValueList + ToSql> ToSql for ValueListCons<H, T> {
     const SQL: ConstSqlStr = sql_concat!(H, ", ", T);
+    const NUM_PARAMS: usize = H::NUM_PARAMS + T::NUM_PARAMS;
 
-    fn collect_parameters(&self, f: &mut Vec<crate::QueryValue>) {
-        self.head.collect_parameters(f);
-        self.tail.collect_parameters(f);
+    fn collect_parameters<'a>(&self, params: &'a mut [QueryValue]) -> &'a mut [QueryValue] {
+        let params = self.head.collect_parameters(params);
+        self.tail.collect_parameters(params)
     }
 }
 

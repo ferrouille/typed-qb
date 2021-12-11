@@ -4,7 +4,7 @@ use typed_qb::{prelude::*, qualifiers::AsWhere, QueryRoot};
 
 // These "tests" are here because they cause compiler errors when placed in the main lib.
 // See the test in select.rs that is commented out.
-// TODO: Try moving this back to the lib once 
+// TODO: Try moving this back to the lib once
 
 typed_qb::tables! {
     CREATE TABLE Users (
@@ -23,7 +23,9 @@ typed_qb::tables! {
     );
 }
 
-fn sql<R: QueryRoot>(_: R) -> &'static str { R::SQL_STR }
+fn sql<R: QueryRoot>(_: R) -> &'static str {
+    R::SQL_STR
+}
 
 fn main() {
     let k: i32 = 5;

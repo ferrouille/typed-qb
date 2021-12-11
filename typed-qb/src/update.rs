@@ -17,8 +17,8 @@ use crate::qualifiers::{
 };
 use crate::typing::Ty;
 use crate::{
-    sql_concat, ConstSqlStr, Field, FieldName, QueryRoot, QueryTree, Table, TableAlias, ToSql, Up,
-    UpEnd,
+    sql_concat, ConstSqlStr, Field, FieldName, QueryRoot, QueryTree, QueryValue, Table, TableAlias,
+    ToSql, Up, UpEnd,
 };
 use std::marker::PhantomData;
 
@@ -68,10 +68,11 @@ impl<
 
 impl<T: Table + ToSql, S: SetList + ToSql, L: UpdateQualifiers + ToSql> ToSql for Update<T, S, L> {
     const SQL: ConstSqlStr = sql_concat!("UPDATE ", T, " SET ", S, " ", L);
+    const NUM_PARAMS: usize = T::NUM_PARAMS + S::NUM_PARAMS + L::NUM_PARAMS;
 
-    fn collect_parameters(&self, f: &mut Vec<crate::QueryValue>) {
-        self.sets.collect_parameters(f);
-        self.qualifiers.collect_parameters(f);
+    fn collect_parameters<'a>(&self, params: &'a mut [QueryValue]) -> &'a mut [QueryValue] {
+        let params = self.sets.collect_parameters(params);
+        self.qualifiers.collect_parameters(params)
     }
 }
 
@@ -110,19 +111,21 @@ where
     Field<T, A, N>: ToSql,
 {
     const SQL: ConstSqlStr = sql_concat!([Field::<T, A, N>], " = ", V);
+    const NUM_PARAMS: usize = V::NUM_PARAMS;
 
-    fn collect_parameters(&self, f: &mut Vec<crate::QueryValue>) {
-        self.field.collect_parameters(f);
-        self.value.collect_parameters(f);
+    fn collect_parameters<'a>(&self, params: &'a mut [QueryValue]) -> &'a mut [QueryValue] {
+        let params = self.field.collect_parameters(params);
+        self.value.collect_parameters(params)
     }
 }
 
 impl<H: IsSet + ToSql, T: SetList + ToSql> ToSql for SetListCons<H, T> {
     const SQL: ConstSqlStr = sql_concat!(H, ", ", T);
+    const NUM_PARAMS: usize = H::NUM_PARAMS + T::NUM_PARAMS;
 
-    fn collect_parameters(&self, f: &mut Vec<crate::QueryValue>) {
-        self.head.collect_parameters(f);
-        self.tail.collect_parameters(f);
+    fn collect_parameters<'a>(&self, params: &'a mut [QueryValue]) -> &'a mut [QueryValue] {
+        let params = self.head.collect_parameters(params);
+        self.tail.collect_parameters(params)
     }
 }
 

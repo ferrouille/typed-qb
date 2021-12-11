@@ -65,31 +65,29 @@ pub enum BinOp {
 
 impl fmt::Debug for BinOp {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(
-            match self {
-                BinOp::Or(_) => "OR",
-                BinOp::Xor(_) => "XOR",
-                BinOp::And(_) => "AND",
-                BinOp::CmpEq(_) => "=",
-                BinOp::CmpEqNullSafe(_, _) => "<=>",
-                BinOp::CmpGe(_) => ">=",
-                BinOp::CmpGt(_) => ">",
-                BinOp::CmpLe(_) => "<=",
-                BinOp::CmpLt(_) => "<",
-                BinOp::CmpNe(_) => "!=",
-                BinOp::CmpLike(_) => "LIKE",
-                BinOp::BitOr(_) => "|",
-                BinOp::BitAnd(_) => "&",
-                BinOp::Shl(_) => "<<",
-                BinOp::Shr(_) => ">>",
-                BinOp::Sub(_) => "-",
-                BinOp::Add(_) => "+",
-                BinOp::Mul(_) => "*",
-                BinOp::Div(_) => "/",
-                BinOp::Mod(_) => "%",
-                BinOp::BitXor(_) => "^",
-            }
-        )
+        f.write_str(match self {
+            BinOp::Or(_) => "OR",
+            BinOp::Xor(_) => "XOR",
+            BinOp::And(_) => "AND",
+            BinOp::CmpEq(_) => "=",
+            BinOp::CmpEqNullSafe(_, _) => "<=>",
+            BinOp::CmpGe(_) => ">=",
+            BinOp::CmpGt(_) => ">",
+            BinOp::CmpLe(_) => "<=",
+            BinOp::CmpLt(_) => "<",
+            BinOp::CmpNe(_) => "!=",
+            BinOp::CmpLike(_) => "LIKE",
+            BinOp::BitOr(_) => "|",
+            BinOp::BitAnd(_) => "&",
+            BinOp::Shl(_) => "<<",
+            BinOp::Shr(_) => ">>",
+            BinOp::Sub(_) => "-",
+            BinOp::Add(_) => "+",
+            BinOp::Mul(_) => "*",
+            BinOp::Div(_) => "/",
+            BinOp::Mod(_) => "%",
+            BinOp::BitXor(_) => "^",
+        })
     }
 }
 

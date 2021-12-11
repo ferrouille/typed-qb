@@ -11,7 +11,7 @@
 use crate::qualifiers::{
     AnyHaving, AnyOrderedBy, AnyWhere, Limit, LimitValue, OrderBy, OrderBySeq,
 };
-use crate::{sql_concat, ConstSqlStr, QueryRoot, QueryTree, Table, ToSql, UpEnd};
+use crate::{sql_concat, ConstSqlStr, QueryRoot, QueryTree, QueryValue, Table, ToSql, UpEnd};
 use std::marker::PhantomData;
 
 pub trait DeleteQualifiers {}
@@ -33,9 +33,10 @@ impl<T: Table + QueryTree<UpEnd>, L: DeleteQualifiers + QueryTree<T::MaxUp>> Que
 
 impl<T: Table + ToSql, L: DeleteQualifiers + ToSql> ToSql for Delete<T, L> {
     const SQL: ConstSqlStr = sql_concat!("DELETE FROM ", T, " ", L);
+    const NUM_PARAMS: usize = L::NUM_PARAMS;
 
-    fn collect_parameters(&self, f: &mut Vec<crate::QueryValue>) {
-        self.qualifiers.collect_parameters(f);
+    fn collect_parameters<'a>(&self, params: &'a mut [QueryValue]) -> &'a mut [QueryValue] {
+        self.qualifiers.collect_parameters(params)
     }
 }
 

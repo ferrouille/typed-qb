@@ -1,7 +1,9 @@
 use crate::{
     expr::{Distinct, Value, ValueOrStar},
-    typing::{BigInt, Grouped, NonNullable, Nullable, Signed, SimpleTy, Ty, Unsigned, F64, Undetermined},
-    ConstSqlStr, QueryTree, ToSql, Up,
+    typing::{
+        BigInt, Grouped, NonNullable, Nullable, Signed, SimpleTy, Ty, Undetermined, Unsigned, F64,
+    },
+    ConstSqlStr, QueryTree, QueryValue, ToSql, Up,
 };
 
 // TODO: Macro to deduplicate function definitions
@@ -26,9 +28,10 @@ impl<V: Value> Value for Sum<V> {
 
 impl<V: Value + ToSql> ToSql for Sum<V> {
     const SQL: ConstSqlStr = crate::sql_concat!("SUM(", V, ")");
+    const NUM_PARAMS: usize = V::NUM_PARAMS;
 
-    fn collect_parameters(&self, f: &mut Vec<crate::QueryValue>) {
-        self.of.collect_parameters(f)
+    fn collect_parameters<'a>(&self, params: &'a mut [QueryValue]) -> &'a mut [QueryValue] {
+        self.of.collect_parameters(params)
     }
 }
 
@@ -53,9 +56,10 @@ impl<V: Value> Value for Max<V> {
 
 impl<V: Value + ToSql> ToSql for Max<V> {
     const SQL: ConstSqlStr = crate::sql_concat!("MAX(", V, ")");
+    const NUM_PARAMS: usize = V::NUM_PARAMS;
 
-    fn collect_parameters(&self, f: &mut Vec<crate::QueryValue>) {
-        self.of.collect_parameters(f)
+    fn collect_parameters<'a>(&self, params: &'a mut [QueryValue]) -> &'a mut [QueryValue] {
+        self.of.collect_parameters(params)
     }
 }
 
@@ -84,10 +88,11 @@ impl<X: Value, Y: Value> Value for IfNull<X, Y> {
 
 impl<X: Value + ToSql, Y: Value + ToSql> ToSql for IfNull<X, Y> {
     const SQL: ConstSqlStr = crate::sql_concat!("IFNULL(", X, ", ", Y, ")");
+    const NUM_PARAMS: usize = X::NUM_PARAMS + Y::NUM_PARAMS;
 
-    fn collect_parameters(&self, f: &mut Vec<crate::QueryValue>) {
-        self.val.collect_parameters(f);
-        self.ifnull.collect_parameters(f);
+    fn collect_parameters<'a>(&self, params: &'a mut [QueryValue]) -> &'a mut [QueryValue] {
+        let params = self.val.collect_parameters(params);
+        self.ifnull.collect_parameters(params)
     }
 }
 
@@ -117,9 +122,10 @@ impl<V: ValueStarOrDistinct> Value for Count<V> {
 
 impl<V: ValueStarOrDistinct + ToSql> ToSql for Count<V> {
     const SQL: ConstSqlStr = crate::sql_concat!("COUNT(", V, ")");
+    const NUM_PARAMS: usize = V::NUM_PARAMS;
 
-    fn collect_parameters(&self, f: &mut Vec<crate::QueryValue>) {
-        self.of.collect_parameters(f)
+    fn collect_parameters<'a>(&self, params: &'a mut [QueryValue]) -> &'a mut [QueryValue] {
+        self.of.collect_parameters(params)
     }
 }
 
@@ -142,6 +148,9 @@ impl Value for Rand {
 
 impl ToSql for Rand {
     const SQL: ConstSqlStr = crate::sql_concat!("RAND()");
+    const NUM_PARAMS: usize = 0;
 
-    fn collect_parameters(&self, _f: &mut Vec<crate::QueryValue>) { }
+    fn collect_parameters<'a>(&self, params: &'a mut [QueryValue]) -> &'a mut [QueryValue] {
+        params
+    }
 }
