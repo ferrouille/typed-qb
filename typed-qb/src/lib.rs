@@ -799,6 +799,34 @@ pub trait Table: Sized {
             _phantom: PhantomData,
         }
     }
+
+    fn exists<
+        U: Up,
+        D: SelectedData,
+        L: AnyLimit,
+        I: IntoPartialSelect<D, L>,
+        G: FnOnce(&Self::WithAlias<Alias<U>>) -> I,
+    >(
+        data: G,
+    ) -> expr::Exists<
+        Select<
+            D,
+            L,
+            BaseTable<
+                Alias<U>,
+                Self::WithAlias<Alias<U>>,
+                <<I as IntoPartialSelect<D, L>>::Output as PartialSelect<D, L>>::From,
+            >,
+        >,
+    > {
+        let table = Self::new();
+        let query = data(&table);
+        expr::Exists(
+            query
+                .into_partial_select()
+                .map_from(|next| BaseTable::new(table, next)),
+        )
+    }
 }
 
 impl<T: Ty, A, N: FieldName> Value for Field<T, A, N> {

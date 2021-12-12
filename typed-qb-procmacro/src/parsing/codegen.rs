@@ -131,20 +131,32 @@ impl<'a> Iterator for FunctionCallTokens<'a> {
     }
 }
 
+impl ToTokenStream for CmpOp {
+    fn to_token_stream(&self, w: &mut TokenStream) {
+        let (name, span) = match self {
+            CmpOp::Eq(s) => ("CmpEq", s.span()),
+            CmpOp::EqNullSafe(s1, s2) => ("CmpEqNullSafe", s1.span().join(s2.span()).unwrap()),
+            CmpOp::Ge(s) => ("CmpGe", s.span()),
+            CmpOp::Gt(s) => ("CmpGt", s.span()),
+            CmpOp::Le(s) => ("CmpLe", s.span()),
+            CmpOp::Lt(s) => ("CmpLt", s.span()),
+            CmpOp::Ne(s) => ("CmpNe", s.span()),
+            CmpOp::Like(s) => ("CmpLike", s.span()),
+        };
+
+        w.extend(TokenPath::new(span, &["typed_qb", "expr", name]));
+    }
+}
+
 impl ToTokenStream for BinOp {
     fn to_token_stream(&self, w: &mut TokenStream) {
         let (name, span) = match self {
             BinOp::Or(s) => ("Or", s.span()),
             BinOp::Xor(s) => ("Xor", s.span()),
             BinOp::And(s) => ("And", s.span()),
-            BinOp::CmpEq(s) => ("CmpEq", s.span()),
-            BinOp::CmpEqNullSafe(s1, s2) => ("CmpEqNullSafe", s1.span().join(s2.span()).unwrap()),
-            BinOp::CmpGe(s) => ("CmpGe", s.span()),
-            BinOp::CmpGt(s) => ("CmpGt", s.span()),
-            BinOp::CmpLe(s) => ("CmpLe", s.span()),
-            BinOp::CmpLt(s) => ("CmpLt", s.span()),
-            BinOp::CmpNe(s) => ("CmpNe", s.span()),
-            BinOp::CmpLike(s) => ("CmpLike", s.span()),
+            BinOp::Cmp(op) => return op.to_token_stream(w),
+            BinOp::CmpAny(op, _) => return op.to_token_stream(w),
+            BinOp::CmpAll(op, _) => return op.to_token_stream(w),
             BinOp::BitOr(s) => ("BitOr", s.span()),
             BinOp::BitAnd(s) => ("BitAnd", s.span()),
             BinOp::Shl(s) => ("Shl", s.span()),
@@ -168,7 +180,27 @@ impl ToTokenStream for Binary {
         let mut ts = TokenStream::new();
         self.lhs.to_token_stream(&mut ts);
         ts.extend([TokenTree::Punct(Punct::new(',', Spacing::Alone))]);
-        self.rhs.to_token_stream(&mut ts);
+
+        match &self.op {
+            BinOp::CmpAny(_, kw) => {
+                let mut arg = TokenStream::new();
+                self.rhs.to_token_stream(&mut arg);
+
+                ts.extend(
+                    FunctionCallTokens::new(kw.span(), &["typed_qb", "expr", "Any"]).arg(arg),
+                );
+            }
+            BinOp::CmpAll(_, kw) => {
+                let mut arg = TokenStream::new();
+                self.rhs.to_token_stream(&mut arg);
+
+                ts.extend(
+                    FunctionCallTokens::new(kw.span(), &["typed_qb", "expr", "All"]).arg(arg),
+                );
+            }
+            _ => self.rhs.to_token_stream(&mut ts),
+        }
+
         w.extend([TokenTree::Group(Group::new(Delimiter::Parenthesis, ts))]);
     }
 }

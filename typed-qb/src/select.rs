@@ -216,8 +216,8 @@ where
     /// That is, it generates something of the form `SELECT .. FROM (self)`.
     pub fn query<
         U: Up,
-        D: SelectedData + QueryTree<U>,
-        L: AnyLimit + QueryTree<D::MaxUp>,
+        D: SelectedData,
+        L: AnyLimit,
         I: IntoPartialSelect<D, L>,
         G: FnOnce(&DX::Instantiated<Alias<U>>) -> I,
     >(
@@ -227,19 +227,11 @@ where
         D,
         L,
         BaseTable<
-            Alias<L::MaxUp>,
+            Alias<U>,
             Select<DX, LX, F>,
             <<I as IntoPartialSelect<D, L>>::Output as PartialSelect<D, L>>::From,
         >,
-    >
-    where
-        Self: QueryTree<UpOne<U>>,
-        BaseTable<
-            Alias<L::MaxUp>,
-            Select<DX, LX, F>,
-            <<I as IntoPartialSelect<D, L>>::Output as PartialSelect<D, L>>::From,
-        >: QueryTree<L::MaxUp>,
-    {
+    > {
         let table = DX::instantiate();
         let query = data(&table);
         query.into_partial_select().map_from(|next| BaseTable {
@@ -254,8 +246,8 @@ where
     pub fn left_join<
         U: Up,
         V: Value,
-        D: SelectedData + QueryTree<U>,
-        L: AnyLimit + QueryTree<D::MaxUp>,
+        D: SelectedData,
+        L: AnyLimit,
         C: FnOnce(&<DX::AllNullable as SelectedData>::Instantiated<Alias<U>>) -> V,
         I: IntoPartialSelect<D, L>,
         G: FnOnce(&<DX::AllNullable as SelectedData>::Instantiated<Alias<U>>) -> I,
@@ -272,17 +264,7 @@ where
             V,
             <<I as IntoPartialSelect<D, L>>::Output as PartialSelect<D, L>>::From,
         >,
-    >
-    where
-        <DX as SelectedData>::AllNullable: ToSql,
-        Self: QueryTree<UpOne<U>>,
-        LeftJoin<
-            Alias<U>,
-            <Select<DX, LX, F> as TableReference>::AllNullable,
-            V,
-            <<I as IntoPartialSelect<D, L>>::Output as PartialSelect<D, L>>::From,
-        >: QueryTree<L::MaxUp>,
-    {
+    > {
         let table = DX::AllNullable::instantiate();
         let query = data(&table);
         query.into_partial_select().map_from(|next| LeftJoin {
@@ -298,8 +280,8 @@ where
     pub fn inner_join<
         U: Up,
         V: Value,
-        D: SelectedData + QueryTree<U>,
-        L: AnyLimit + QueryTree<D::MaxUp>,
+        D: SelectedData,
+        L: AnyLimit,
         C: FnOnce(&DX::Instantiated<Alias<U>>) -> V,
         I: IntoPartialSelect<D, L>,
         G: FnOnce(&DX::Instantiated<Alias<U>>) -> I,
@@ -316,17 +298,7 @@ where
             V,
             <<I as IntoPartialSelect<D, L>>::Output as PartialSelect<D, L>>::From,
         >,
-    >
-    where
-        <DX as SelectedData>::AllNullable: ToSql,
-        Self: QueryTree<UpOne<U>>,
-        InnerJoin<
-            Alias<U>,
-            Select<DX, LX, F>,
-            V,
-            <<I as IntoPartialSelect<D, L>>::Output as PartialSelect<D, L>>::From,
-        >: QueryTree<L::MaxUp>,
-    {
+    > {
         let table = DX::instantiate();
         let query = data(&table);
         query.into_partial_select().map_from(|next| InnerJoin {

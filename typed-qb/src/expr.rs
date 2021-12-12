@@ -1,3 +1,4 @@
+use crate::select::SelectQuery;
 use crate::typing::{BigInt, IsGrouped, IsNullable, Signed, SimpleTy, Ty, Unsigned};
 use crate::{
     sql_concat,
@@ -703,6 +704,66 @@ gen_postfix_unary_ops! {
     IsTrue<X> => "IS TRUE",
     IsFalse<X> => "IS FALSE",
     IsUnknown<X> => "IS UNKNOWN",
+}
+
+#[derive(Debug)]
+pub struct Exists<Q: SelectQuery>(pub Q);
+impl<Q: SelectQuery> Value for Exists<Q> {
+    type Ty = SimpleTy<Bool, NonNullable>;
+    type Grouped = Undetermined;
+}
+
+impl<U: Up, Q: SelectQuery + QueryTree<U>> QueryTree<U> for Exists<Q> {
+    type MaxUp = Q::MaxUp;
+}
+
+impl<Q: SelectQuery + ToSql> ToSql for Exists<Q> {
+    const SQL: ConstSqlStr = sql_concat!("EXISTS ", Q);
+    const NUM_PARAMS: usize = Q::NUM_PARAMS;
+
+    fn collect_parameters<'a>(&self, params: &'a mut [QueryValue]) -> &'a mut [QueryValue] {
+        self.0.collect_parameters(params)
+    }
+}
+
+#[derive(Debug)]
+pub struct Any<Q: SelectQuery>(pub Q);
+impl<Q: SelectQuery> Value for Any<Q> {
+    type Ty = SimpleTy<Bool, NonNullable>;
+    type Grouped = Undetermined;
+}
+
+impl<U: Up, Q: SelectQuery + QueryTree<U>> QueryTree<U> for Any<Q> {
+    type MaxUp = Q::MaxUp;
+}
+
+impl<Q: SelectQuery + ToSql> ToSql for Any<Q> {
+    const SQL: ConstSqlStr = sql_concat!("ANY ", Q);
+    const NUM_PARAMS: usize = Q::NUM_PARAMS;
+
+    fn collect_parameters<'a>(&self, params: &'a mut [QueryValue]) -> &'a mut [QueryValue] {
+        self.0.collect_parameters(params)
+    }
+}
+
+#[derive(Debug)]
+pub struct All<Q: SelectQuery>(pub Q);
+impl<Q: SelectQuery> Value for All<Q> {
+    type Ty = SimpleTy<Bool, NonNullable>;
+    type Grouped = Undetermined;
+}
+
+impl<U: Up, Q: SelectQuery + QueryTree<U>> QueryTree<U> for All<Q> {
+    type MaxUp = Q::MaxUp;
+}
+
+impl<Q: SelectQuery + ToSql> ToSql for All<Q> {
+    const SQL: ConstSqlStr = sql_concat!("ALL ", Q);
+    const NUM_PARAMS: usize = Q::NUM_PARAMS;
+
+    fn collect_parameters<'a>(&self, params: &'a mut [QueryValue]) -> &'a mut [QueryValue] {
+        self.0.collect_parameters(params)
+    }
 }
 
 impl<const N: i64> ToSql for ConstI64<N> {

@@ -39,18 +39,22 @@ impl<A: GetSpan, B: GetSpan> Either<A, B> {
 }
 
 #[derive(Clone)]
+pub enum CmpOp {
+    Eq(Token!(=)),
+    EqNullSafe(Token!(<=), Token!(>)),
+    Ge(Token!(>=)),
+    Gt(Token!(>)),
+    Le(Token!(<=)),
+    Lt(Token!(<)),
+    Ne(Token!(!=)),
+    Like(Ident),
+}
+
+#[derive(Clone)]
 pub enum BinOp {
     Or(Either<Token!(||), Ident>),
     Xor(Ident),
     And(Either<Token!(&&), Ident>),
-    CmpEq(Token!(=)),
-    CmpEqNullSafe(Token!(<=), Token!(>)),
-    CmpGe(Token!(>=)),
-    CmpGt(Token!(>)),
-    CmpLe(Token!(<=)),
-    CmpLt(Token!(<)),
-    CmpNe(Token!(!=)),
-    CmpLike(Ident),
     BitOr(Token!(|)),
     BitAnd(Token!(&)),
     Shl(Token!(<<)),
@@ -61,6 +65,24 @@ pub enum BinOp {
     Div(Token!(/)),
     Mod(Token!(%)),
     BitXor(Token!(^)),
+    Cmp(CmpOp),
+    CmpAny(CmpOp, Ident),
+    CmpAll(CmpOp, Ident),
+}
+
+impl fmt::Debug for CmpOp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            CmpOp::Eq(_) => "=",
+            CmpOp::EqNullSafe(_, _) => "<=>",
+            CmpOp::Ge(_) => ">=",
+            CmpOp::Gt(_) => ">",
+            CmpOp::Le(_) => "<=",
+            CmpOp::Lt(_) => "<",
+            CmpOp::Ne(_) => "!=",
+            CmpOp::Like(_) => "LIKE",
+        })
+    }
 }
 
 impl fmt::Debug for BinOp {
@@ -69,14 +91,6 @@ impl fmt::Debug for BinOp {
             BinOp::Or(_) => "OR",
             BinOp::Xor(_) => "XOR",
             BinOp::And(_) => "AND",
-            BinOp::CmpEq(_) => "=",
-            BinOp::CmpEqNullSafe(_, _) => "<=>",
-            BinOp::CmpGe(_) => ">=",
-            BinOp::CmpGt(_) => ">",
-            BinOp::CmpLe(_) => "<=",
-            BinOp::CmpLt(_) => "<",
-            BinOp::CmpNe(_) => "!=",
-            BinOp::CmpLike(_) => "LIKE",
             BinOp::BitOr(_) => "|",
             BinOp::BitAnd(_) => "&",
             BinOp::Shl(_) => "<<",
@@ -87,6 +101,9 @@ impl fmt::Debug for BinOp {
             BinOp::Div(_) => "/",
             BinOp::Mod(_) => "%",
             BinOp::BitXor(_) => "^",
+            BinOp::Cmp(c) => return write!(f, "{:?}", c),
+            BinOp::CmpAny(c, _) => return write!(f, "{:?} ANY", c),
+            BinOp::CmpAll(c, _) => return write!(f, "{:?} ALL", c),
         })
     }
 }
@@ -136,14 +153,7 @@ impl BinOp {
             BinOp::Or(..) => Precedence::Or,
             BinOp::Xor(..) => Precedence::Xor,
             BinOp::And(..) => Precedence::And,
-            BinOp::CmpEq(..)
-            | BinOp::CmpEqNullSafe(..)
-            | BinOp::CmpGe(..)
-            | BinOp::CmpGt(..)
-            | BinOp::CmpLe(..)
-            | BinOp::CmpLt(..)
-            | BinOp::CmpNe(..)
-            | BinOp::CmpLike(..) => Precedence::Comparison,
+            BinOp::Cmp(..) | BinOp::CmpAny(..) | BinOp::CmpAll(..) => Precedence::Comparison,
             BinOp::BitOr(..) => Precedence::BitOr,
             BinOp::BitAnd(..) => Precedence::BitAnd,
             BinOp::Shl(..) | BinOp::Shr(..) => Precedence::BitShift,
@@ -241,6 +251,32 @@ crate::parsing::gen_wrapper! {
     }
 }
 
+impl Parse for CmpOp {
+    fn parse(input: ParseStream) -> syn::Result<Self> {
+        if input.peek(Token!(=)) {
+            input.parse().map(CmpOp::Eq)
+        } else if input.peek(Token!(<=)) && input.peek2(Token!(>)) {
+            let a = input.parse()?;
+            let b = input.parse()?;
+            Ok(CmpOp::EqNullSafe(a, b))
+        } else if input.peek(Token!(>=)) {
+            input.parse().map(CmpOp::Ge)
+        } else if input.peek(Token!(>)) {
+            input.parse().map(CmpOp::Gt)
+        } else if input.peek(Token!(<=)) {
+            input.parse().map(CmpOp::Le)
+        } else if input.peek(Token!(<)) {
+            input.parse().map(CmpOp::Lt)
+        } else if input.peek(Token!(!=)) {
+            input.parse().map(CmpOp::Ne)
+        } else if let Ok(ident) = parse_keyword("LIKE", &input) {
+            Ok(CmpOp::Like(ident))
+        } else {
+            Err(input.error("expected a comparison operator"))
+        }
+    }
+}
+
 impl Parse for BinOp {
     fn parse(input: ParseStream) -> syn::Result<Self> {
         if input.peek(Token!(||)) {
@@ -253,24 +289,6 @@ impl Parse for BinOp {
             input.parse().map(|t| BinOp::And(Either::Left(t)))
         } else if let Ok(ident) = parse_keyword("AND", &input) {
             Ok(BinOp::And(Either::Right(ident)))
-        } else if input.peek(Token!(=)) {
-            input.parse().map(BinOp::CmpEq)
-        } else if input.peek(Token!(<=)) && input.peek2(Token!(>)) {
-            let a = input.parse()?;
-            let b = input.parse()?;
-            Ok(BinOp::CmpEqNullSafe(a, b))
-        } else if input.peek(Token!(>=)) {
-            input.parse().map(BinOp::CmpGe)
-        } else if input.peek(Token!(>)) {
-            input.parse().map(BinOp::CmpGt)
-        } else if input.peek(Token!(<=)) {
-            input.parse().map(BinOp::CmpLe)
-        } else if input.peek(Token!(<)) {
-            input.parse().map(BinOp::CmpLt)
-        } else if input.peek(Token!(!=)) {
-            input.parse().map(BinOp::CmpNe)
-        } else if let Ok(ident) = parse_keyword("LIKE", &input) {
-            Ok(BinOp::CmpLike(ident))
         } else if input.peek(Token!(|)) {
             input.parse().map(BinOp::BitOr)
         } else if input.peek(Token!(&)) {
@@ -291,6 +309,14 @@ impl Parse for BinOp {
             input.parse().map(BinOp::Mod)
         } else if input.peek(Token!(^)) {
             input.parse().map(BinOp::BitXor)
+        } else if let Ok(op) = input.parse() {
+            Ok(if let Ok(ident) = parse_keyword("ANY", &input) {
+                BinOp::CmpAny(op, ident)
+            } else if let Ok(ident) = parse_keyword("ALL", &input) {
+                BinOp::CmpAll(op, ident)
+            } else {
+                BinOp::Cmp(op)
+            })
         } else {
             Err(input.error("expected an operator"))
         }
