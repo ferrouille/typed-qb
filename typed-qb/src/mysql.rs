@@ -210,6 +210,8 @@ where
         <Q as SelectQuery>::Rows:
             CollectResults<<Q::Columns as FromRow>::Queried, Self::Iter<'a, Q>>,
     {
+        debug!("Preparing query: {} with {} params", Q::SQL_STR, Q::NUM_PARAMS);
+
         // TODO: Make this an array once rust supports it (currently gives an ICE)
         let mut params = vec![NULL; Q::NUM_PARAMS];
         query.collect_parameters(&mut params);

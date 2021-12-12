@@ -510,7 +510,7 @@ impl<V: Value + ToSql> ToSql for Where<V> {
 
 impl<I: AnyWhere + ToSql, V: Value + ToSql> ToSql for GroupBy<I, V> {
     const SQL: ConstSqlStr = crate::sql_concat!(I, " GROUP BY ", V);
-    const NUM_PARAMS: usize = V::NUM_PARAMS;
+    const NUM_PARAMS: usize = I::NUM_PARAMS + V::NUM_PARAMS;
 
     fn collect_parameters<'a>(&self, params: &'a mut [QueryValue]) -> &'a mut [QueryValue] {
         let params = self.inner.collect_parameters(params);

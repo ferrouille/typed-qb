@@ -1223,7 +1223,6 @@ macro_rules! data {
         $crate::data!(genquerytree @ { $nextup } $($key ($alias),)*);
 
         $crate::_internal_impl_selected_data!({ $ty } $($key,)*);
-        $crate::_internal_select_derive_to_sql!($($key),*);
 
         $crate::data!(fromrow @ $tykind { $ty } { $($key),* } { Intermediate::<'a, $($key),*> });
 
@@ -1412,37 +1411,6 @@ macro_rules! _internal_impl_selected_data {
 
         $crate::_internal_impl_selected_data!(@withfields { 0 } { $($key)* }  { $($key)* });
     };
-}
-
-#[macro_export]
-#[doc(hidden)]
-macro_rules! _internal_select_derive_to_sql {
-    ($firstkey:ident $(, $($key:ident),*)?) => {
-        {
-            // #[allow(non_camel_case_types)]
-            // impl<
-            //     $firstkey: $crate::ToSql,
-            //     $($($key: $crate::ToSql,)*)?
-            //     M: $crate::typing::NullabilityModifier
-            // > $crate::ToSql for AnonymousData<$firstkey, $($($key,)*)? M> {
-            //     // TODO: Require QueryTree for all parameters, use UniqueFieldName instead of the actual name of the field
-            //     const SQL: $crate::ConstSqlStr = $crate::sql_concat!(
-            //         $firstkey, " AS `", (stringify!($firstkey)), "`"
-            //         $(, $(
-            //             ", ", $key, " AS `", (stringify!($key)), "`"
-            //         ),*)?
-            //     );
-
-            //     fn collect_parameters(&self, params: &mut Vec<$crate::QueryValue>) {
-            //         self.$firstkey.collect_parameters(params);
-
-            //         $($(
-            //             self.$key.collect_parameters(params);
-            //         )*)?
-            //     }
-            // }
-        }
-    }
 }
 
 #[macro_export]

@@ -628,7 +628,7 @@ impl<A: TableAlias, T: TableReference + ToSql, F: FromTables + ToSql> ToSql for 
     const NUM_PARAMS: usize = T::NUM_PARAMS + F::NUM_PARAMS;
 
     fn collect_parameters<'a>(&self, params: &'a mut [QueryValue]) -> &'a mut [QueryValue] {
-        debug!("BaseTable {} with alias {}", T::SQL_STR, A::NAME,);
+        debug!("BaseTable {} with alias {}", T::SQL_STR, A::NAME);
         let params = self.table.collect_parameters(params);
         self.next.collect_parameters(params)
     }
