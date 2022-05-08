@@ -1,7 +1,7 @@
 use crate::{
     expr::{Distinct, Value, ValueOrStar},
     typing::{
-        BigInt, Grouped, NonNullable, Nullable, Signed, SimpleTy, Ty, Undetermined, Unsigned, F64,
+        BigInt, Grouped, NonNullable, Nullable, Signed, SimpleTy, Ty, Undetermined, Unsigned, F64, Bool,
     },
     ConstSqlStr, QueryTree, QueryValue, ToSql, Up,
 };
@@ -152,5 +152,41 @@ impl ToSql for Rand {
 
     fn collect_parameters<'a>(&self, params: &'a mut [QueryValue]) -> &'a mut [QueryValue] {
         params
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct If<X: Value, Y: Value, Z: Value> {
+    cond: X,
+    then_val: Y,
+    else_val: Z,
+}
+
+impl<U: Up, X: Value + QueryTree<U>, Y: Value + QueryTree<X::MaxUp>, Z: Value + QueryTree<Y::MaxUp>> QueryTree<U> for If<X, Y, Z> {
+    type MaxUp = Z::MaxUp;
+}
+
+#[allow(non_snake_case)]
+pub fn IF<X: Value, Y: Value, Z: Value>(x: X, y: Y, z: Z) -> If<X, Y, Z> {
+    If { cond: x, then_val: y, else_val: z }
+}
+
+impl<X: Value, Y: Value, Z: Value> Value for If<X, Y, Z> 
+    where X::Ty: Ty<Base = Bool> {
+    // TODO: Merge first and second type
+    type Ty = SimpleTy<<Y::Ty as Ty>::Base, <Y::Ty as Ty>::Nullable>;
+
+    // TODO: Merge grouping
+    type Grouped = X::Grouped;
+}
+
+impl<X: Value + ToSql, Y: Value + ToSql, Z: Value + ToSql> ToSql for If<X, Y, Z> {
+    const SQL: ConstSqlStr = crate::sql_concat!("IF(", X, ", ", Y, ",", Z, ")");
+    const NUM_PARAMS: usize = X::NUM_PARAMS + Y::NUM_PARAMS;
+
+    fn collect_parameters<'a>(&self, params: &'a mut [QueryValue]) -> &'a mut [QueryValue] {
+        let params = self.cond.collect_parameters(params);
+        let params = self.then_val.collect_parameters(params);
+        self.else_val.collect_parameters(params)
     }
 }

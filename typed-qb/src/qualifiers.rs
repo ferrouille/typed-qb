@@ -386,10 +386,6 @@ impl ModifyRows for ConstLimit<1> {
     type Rows<R: RowKind> = ZeroOrOne;
 }
 
-impl<const OFFSET: usize> ModifyRows for ConstOffsetAndLimit<OFFSET, 1> {
-    type Rows<R: RowKind> = ZeroOrOne;
-}
-
 impl<const N: usize> ModifyRows for ConstLimit<N>
 where
     ConstCheck<{ N >= 2 }>: True,
@@ -399,9 +395,23 @@ where
 
 impl<const OFFSET: usize, const N: usize> ModifyRows for ConstOffsetAndLimit<OFFSET, N>
 where
-    ConstCheck<{ N >= 2 }>: True,
+    IteImpl<{N >= 2}, ZeroOrOne>: Ite,
 {
-    type Rows<R: RowKind> = R;
+    type Rows<R: RowKind> = <IteImpl<{N >= 2}, ZeroOrOne> as Ite>::Output<R>;
+}
+
+pub struct IteImpl<const CHECK: bool, Else>(Else);
+
+pub trait Ite {
+    type Output<R: RowKind>: RowKind;
+}
+
+impl<Else: RowKind> Ite for IteImpl<true, Else> {
+    type Output<R: RowKind> = R;
+}
+
+impl<Else: RowKind> Ite for IteImpl<false, Else> {
+    type Output<R: RowKind> = Else;
 }
 
 pub struct ConstCheck<const CHECK: bool>;
