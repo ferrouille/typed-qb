@@ -205,10 +205,10 @@ impl MergeSigns for (Signed, Signed) {
     type Result = Signed;
 }
 impl MergeSigns for (Signed, Unsigned) {
-    type Result = Unsigned;
+    type Result = Signed;
 }
 impl MergeSigns for (Unsigned, Signed) {
-    type Result = Unsigned;
+    type Result = Signed;
 }
 impl MergeSigns for (Unsigned, Unsigned) {
     type Result = Unsigned;
@@ -443,21 +443,27 @@ impl BaseTy for Time {
 
 pub trait AnyInt {
     type Sign: Signedness;
+    type WithSign<W: Signedness>: AnyInt;
 }
 impl<S: Signedness> AnyInt for BigInt<S> {
     type Sign = S;
+    type WithSign<W: Signedness> = BigInt<W>;
 }
 impl<S: Signedness> AnyInt for Int<S> {
     type Sign = S;
+    type WithSign<W: Signedness> = BigInt<W>;
 }
 impl<S: Signedness> AnyInt for MediumInt<S> {
     type Sign = S;
+    type WithSign<W: Signedness> = MediumInt<W>;
 }
 impl<S: Signedness> AnyInt for SmallInt<S> {
     type Sign = S;
+    type WithSign<W: Signedness> = SmallInt<W>;
 }
 impl<S: Signedness> AnyInt for TinyInt<S> {
     type Sign = S;
+    type WithSign<W: Signedness> = TinyInt<W>;
 }
 
 pub trait IsNullable {

@@ -220,12 +220,12 @@ impl<X: Value, Y: Value, I1: AnyInt, I2: AnyInt> Value for Sub<X, Y>
 where
     X::Ty: Ty<Base = I1>,
     Y::Ty: Ty<Base = I2>,
-    (I1, I2): MergeNumbers,
+    (I1, I2::WithSign<Signed>): MergeNumbers,
     (<X::Ty as Ty>::Nullable, <Y::Ty as Ty>::Nullable): CombineNullability,
     (X::Grouped, Y::Grouped): CombineGrouping,
 {
     type Ty = SimpleTy<
-        <(I1, I2) as MergeNumbers>::Result,
+        <(I1, I2::WithSign<Signed>) as MergeNumbers>::Result,
         <(<X::Ty as Ty>::Nullable, <Y::Ty as Ty>::Nullable) as CombineNullability>::Result,
     >;
     type Grouped = <(X::Grouped, Y::Grouped) as CombineGrouping>::Result;
@@ -594,7 +594,7 @@ gen_ops!(
     } => Add<X, Y>,
     {X: Value, Y: Value, I1: AnyInt, I2: AnyInt} where {
         X::Ty: Ty<Base = I1>, Y::Ty: Ty<Base = I2>,
-        (I1, I2): MergeNumbers,
+        (I1, I2::WithSign<Signed>): MergeNumbers,
         (<X::Ty as Ty>::Nullable, <Y::Ty as Ty>::Nullable): CombineNullability,
         (X::Grouped, Y::Grouped): CombineGrouping,
     } => Sub<X, Y>,
