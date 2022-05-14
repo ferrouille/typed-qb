@@ -85,13 +85,13 @@ use insert::{Insert, ValueList};
 pub use typed_qb_procmacro::*;
 
 use expr::Value;
-use qualifiers::{AllRows, AnyLimit, AsAnyLimit};
+use qualifiers::{AllRows, AnyLimit, AsAnyLimit, Where};
 use select::{
     AsSelectedData, BaseTable, InnerJoin, IntoPartialSelect, LeftJoin, NilTable, PartialSelect,
     Select, SelectedData, SingleColumn,
 };
 use std::{fmt, marker::PhantomData};
-use typing::{BaseTy, IsGrouped, IsNullable, KeepOriginalNullability, Ty, Ungrouped};
+use typing::{BaseTy, IsGrouped, IsNullable, KeepOriginalNullability, Ty, Ungrouped, Bool};
 use update::{SetList, Update, UpdateQualifiers};
 
 pub use __private::ConstSqlStr;
@@ -802,28 +802,25 @@ pub trait Table: Sized {
 
     fn exists<
         U: Up,
-        D: SelectedData,
-        L: AnyLimit,
-        I: IntoPartialSelect<D, L>,
-        G: FnOnce(&Self::WithAlias<Alias<U>>) -> I,
+        U2: Up,
+        V: Value,
+        G: FnOnce(&Self::WithAlias<Alias<U2>>) -> V,
     >(
         data: G,
     ) -> expr::Exists<
         Select<
-            D,
-            L,
+            SingleColumn<expr::ConstI64::<1>, U, KeepOriginalNullability>,
+            Where<V>,
             BaseTable<
-                Alias<U>,
-                Self::WithAlias<Alias<U>>,
-                <<I as IntoPartialSelect<D, L>>::Output as PartialSelect<D, L>>::From,
+                Alias<U2>,
+                Self::WithAlias<Alias<U2>>,
+                NilTable,
             >,
         >,
-    > {
+    > where V::Ty: Ty<Base = Bool> {
         let table = Self::new();
-        let query = data(&table);
         expr::Exists(
-            query
-                .into_partial_select()
+            select::select(expr::ConstI64::<1>, |_| data(&table))
                 .map_from(|next| BaseTable::new(table, next)),
         )
     }
