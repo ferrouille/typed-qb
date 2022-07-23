@@ -422,8 +422,8 @@ fn parse_unary_expr(input: ParseStream) -> syn::Result<Expr> {
             keyword: ident,
             expr: Box::new(expr),
         }))
-    } else if let Ok(expr) = syn::group::parse_parens(input) {
-        let buf = expr.content;
+    } else if let Ok(expr) = super::parse_parens(input) {
+        let buf = expr;
         let expr = Expr::parse(&buf)?;
         if !buf.is_empty() {
             return Err(buf.error("Found more tokens than expected"));
@@ -442,8 +442,8 @@ fn parse_unary_expr(input: ParseStream) -> syn::Result<Expr> {
                 base: Some((base, dot)),
                 name,
             }))
-        } else if let Ok(args) = syn::group::parse_parens(input) {
-            let args = Punctuated::parse_terminated(&args.content)?;
+        } else if let Ok(args) = super::parse_parens(input) {
+            let args = Punctuated::parse_terminated(&args)?;
 
             Ok(Expr::FunctionCall(FunctionCall {
                 name,

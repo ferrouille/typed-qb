@@ -395,9 +395,9 @@ where
 
 impl<const OFFSET: usize, const N: usize> ModifyRows for ConstOffsetAndLimit<OFFSET, N>
 where
-    IteImpl<{N >= 2}, ZeroOrOne>: Ite,
+    IteImpl<{ N >= 2 }, ZeroOrOne>: Ite,
 {
-    type Rows<R: RowKind> = <IteImpl<{N >= 2}, ZeroOrOne> as Ite>::Output<R>;
+    type Rows<R: RowKind> = <IteImpl<{ N >= 2 }, ZeroOrOne> as Ite>::Output<R>;
 }
 
 pub struct IteImpl<const CHECK: bool, Else>(Else);

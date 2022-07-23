@@ -263,8 +263,8 @@ impl Parse for Column {
 
 impl Parse for DisplayWidth {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
-        Ok(if let Ok(inner) = syn::group::parse_parens(&input) {
-            let val = inner.content.parse()?;
+        Ok(if let Ok(inner) = super::parse_parens(input) {
+            let val = inner.parse()?;
             DisplayWidth::Value { val }
         } else {
             DisplayWidth::None
@@ -274,8 +274,8 @@ impl Parse for DisplayWidth {
 
 impl Parse for Fsp {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
-        Ok(if let Ok(inner) = syn::group::parse_parens(&input) {
-            let val = inner.content.parse()?;
+        Ok(if let Ok(inner) = super::parse_parens(input) {
+            let val = inner.parse()?;
             Fsp::Value { val }
         } else {
             Fsp::None

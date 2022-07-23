@@ -91,7 +91,7 @@ use select::{
     Select, SelectedData, SingleColumn,
 };
 use std::{fmt, marker::PhantomData};
-use typing::{BaseTy, IsGrouped, IsNullable, KeepOriginalNullability, Ty, Ungrouped, Bool};
+use typing::{BaseTy, Bool, IsGrouped, IsNullable, KeepOriginalNullability, Ty, Ungrouped};
 use update::{SetList, Update, UpdateQualifiers};
 
 pub use __private::ConstSqlStr;
@@ -800,27 +800,23 @@ pub trait Table: Sized {
         }
     }
 
-    fn exists<
-        U: Up,
-        U2: Up,
-        V: Value,
-        G: FnOnce(&Self::WithAlias<Alias<U2>>) -> V,
-    >(
-        data: G,
+    /// Generates an SQL-statement that evaluates to '1' if there is a row for which `predicate` returns true.
+    /// This generates a query of the form `EXISTS (SELECT 1 FROM table WHERE predicate)`.
+    fn exists<U: Up, U2: Up, V: Value, G: FnOnce(&Self::WithAlias<Alias<U2>>) -> V>(
+        predicate: G,
     ) -> expr::Exists<
         Select<
-            SingleColumn<expr::ConstI64::<1>, U, KeepOriginalNullability>,
+            SingleColumn<expr::ConstI64<1>, U, KeepOriginalNullability>,
             Where<V>,
-            BaseTable<
-                Alias<U2>,
-                Self::WithAlias<Alias<U2>>,
-                NilTable,
-            >,
+            BaseTable<Alias<U2>, Self::WithAlias<Alias<U2>>, NilTable>,
         >,
-    > where V::Ty: Ty<Base = Bool> {
+    >
+    where
+        V::Ty: Ty<Base = Bool>,
+    {
         let table = Self::new();
         expr::Exists(
-            select::select(expr::ConstI64::<1>, |_| data(&table))
+            select::select(expr::ConstI64::<1>, |_| predicate(&table))
                 .map_from(|next| BaseTable::new(table, next)),
         )
     }

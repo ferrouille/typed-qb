@@ -1,7 +1,8 @@
 use crate::{
     expr::{Distinct, Value, ValueOrStar},
     typing::{
-        BigInt, Grouped, NonNullable, Nullable, Signed, SimpleTy, Ty, Undetermined, Unsigned, F64, Bool,
+        BigInt, Bool, Grouped, NonNullable, Nullable, Signed, SimpleTy, Ty, Undetermined, Unsigned,
+        F64,
     },
     ConstSqlStr, QueryTree, QueryValue, ToSql, Up,
 };
@@ -162,17 +163,29 @@ pub struct If<X: Value, Y: Value, Z: Value> {
     else_val: Z,
 }
 
-impl<U: Up, X: Value + QueryTree<U>, Y: Value + QueryTree<X::MaxUp>, Z: Value + QueryTree<Y::MaxUp>> QueryTree<U> for If<X, Y, Z> {
+impl<
+        U: Up,
+        X: Value + QueryTree<U>,
+        Y: Value + QueryTree<X::MaxUp>,
+        Z: Value + QueryTree<Y::MaxUp>,
+    > QueryTree<U> for If<X, Y, Z>
+{
     type MaxUp = Z::MaxUp;
 }
 
 #[allow(non_snake_case)]
 pub fn IF<X: Value, Y: Value, Z: Value>(x: X, y: Y, z: Z) -> If<X, Y, Z> {
-    If { cond: x, then_val: y, else_val: z }
+    If {
+        cond: x,
+        then_val: y,
+        else_val: z,
+    }
 }
 
-impl<X: Value, Y: Value, Z: Value> Value for If<X, Y, Z> 
-    where X::Ty: Ty<Base = Bool> {
+impl<X: Value, Y: Value, Z: Value> Value for If<X, Y, Z>
+where
+    X::Ty: Ty<Base = Bool>,
+{
     // TODO: Merge first and second type
     type Ty = SimpleTy<<Y::Ty as Ty>::Base, <Y::Ty as Ty>::Nullable>;
 

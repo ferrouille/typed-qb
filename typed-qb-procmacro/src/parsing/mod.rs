@@ -46,7 +46,8 @@ use proc_macro2::{Delimiter, Span};
 use syn::{
     Ident,
     __private::IntoSpans,
-    parse::{Parse, ParseStream},
+    parenthesized,
+    parse::{Parse, ParseBuffer, ParseStream},
     token::{
         parsing::{peek_punct, punct},
         CustomToken,
@@ -54,6 +55,12 @@ use syn::{
 };
 
 syn::custom_punctuation!(LeftRightArrow, <=>);
+
+pub fn parse_parens(input: syn::parse::ParseStream) -> syn::Result<ParseBuffer> {
+    let inner;
+    let _ = parenthesized!(inner in input);
+    Ok(inner)
+}
 
 pub struct Backtick {
     _spans: [Span; 1],

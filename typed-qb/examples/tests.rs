@@ -46,9 +46,21 @@ fn main() {
 
     assert_eq!(q, "(SELECT `t4`.`Id` AS `f0`, (SELECT COUNT(*) AS `f2` FROM `Questions` AS t3 WHERE (`t3`.`AskedById` = `t5`.`Id`)) AS `f1` FROM `Questions` AS t4 LEFT JOIN `Users` AS t5 ON (`t5`.`Id` = `t4`.`AskedById`) WHERE (`f0` = ?))");
 
-    let q = sql(select(data!{ 
-        exists: Questions::exists(|question| expr!(question.asked_by_id = 5))
-    }, |_| AllRows));
-    
+    let q = sql(select(
+        data! {
+            exists: Questions::exists(|question| expr!(question.asked_by_id = 5))
+        },
+        |_| AllRows,
+    ));
+
+    assert_eq!(q, "(SELECT EXISTS (SELECT 1 AS `f1` FROM `Questions` AS t2 WHERE (`t2`.`AskedById` = 5)) AS `f0` )");
+
+    let q = sql(select(
+        data! {
+            exists: Questions::exists(|question| expr!(question.asked_by_id = 5))
+        },
+        |_| AllRows,
+    ));
+
     assert_eq!(q, "(SELECT EXISTS (SELECT 1 AS `f1` FROM `Questions` AS t2 WHERE (`t2`.`AskedById` = 5)) AS `f0` )");
 }
