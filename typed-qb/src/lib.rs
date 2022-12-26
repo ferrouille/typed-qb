@@ -1184,7 +1184,7 @@ macro_rules! data {
         }
 
         #[allow(non_camel_case_types)]
-        impl<$($key: $crate::Fieldable),*, U: $crate::Up, M: $crate::typing::NullabilityModifier> $crate::select::IntoPartialSelect<AnonymousData<$($key),*, U, M>, AllRows> for AnonymousData<$($key),*, U, M>
+        impl<$($key: $crate::Fieldable),*, U: $crate::Up, M: $crate::typing::NullabilityModifier> $crate::select::IntoPartialSelect<AnonymousData<$($key),*, U, M>, $crate::qualifiers::AllRows> for AnonymousData<$($key),*, U, M>
             where Self: $crate::select::SelectedData, {
             type Output = $crate::select::SelectWithoutFrom<Self, $crate::qualifiers::AllRows>;
 
