@@ -1354,12 +1354,12 @@ macro_rules! _internal_impl_selected_data {
         }
 
         #[allow(non_camel_case_types)]
-        impl<$key: $crate::Fieldable, U: $crate::Up, M: $crate::typing::NullabilityModifier> $crate::select::IntoPartialSelect<AnonymousData<$key, U, M>, AllRows> for AnonymousData<$key, U, M>
+        impl<$key: $crate::Fieldable, U: $crate::Up, M: $crate::typing::NullabilityModifier> $crate::select::IntoPartialSelect<AnonymousData<$key, U, M>, $crate::qualifiers::AllRows> for AnonymousData<$key, U, M>
             where <$key as $crate::Fieldable>::Grouped: $crate::select::GroupedToRows {
-            type Output = $crate::select::SelectWithoutFrom<Self, AllRows>;
+            type Output = $crate::select::SelectWithoutFrom<Self, $crate::qualifiers::AllRows>;
 
             fn into_partial_select(self) -> Self::Output {
-                select(self, |_| AllRows)
+                $crate::select::select(self, |_| $crate::qualifiers::AllRows)
             }
         }
     };
