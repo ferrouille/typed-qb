@@ -4,10 +4,8 @@
 #![feature(adt_const_params, generic_const_exprs)]
 // Other features
 #![feature(
-    generic_associated_types,
     associated_type_defaults,
     const_mut_refs,
-    const_fn_trait_bound
 )]
 
 //! `typed-qb` is a compile-time, typed, query builder.
