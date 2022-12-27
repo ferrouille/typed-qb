@@ -259,7 +259,16 @@ impl BaseTy for F64 {
         match value {
             QueryValue::F32(f) => *f as f64,
             QueryValue::F64(f) => *f,
-            _ => unreachable!(),
+
+            // TODO: Handle out of bounds
+            QueryValue::I64(f) => *f as f64,
+
+            // TODO: Handle out of bounds
+            QueryValue::U64(f) => *f as f64,
+
+            QueryValue::String(v) => (*v).parse().unwrap(),
+            QueryValue::Bytes(v) => std::str::from_utf8(&v).unwrap().parse().unwrap(),
+            other => panic!("Cannot convert {other:?} into f64"),
         }
     }
 }
